@@ -1,7 +1,7 @@
 
 % OVIEDO LAB data analysis.
-
-[stimuli,spikes,param]=load_data('Filename'); % this loads data into the workspace
+%Filename = dir("ACx_data_1/ACxCalyx/20080930-002/");
+[stimuli,spikes,param]=load_data(); % this loads data into the workspace
 % The next step is to build structures with stimuli of interest.
 % There are 3 types of stimuli in our data: tones, fmsweep, whitenoise. 
 
@@ -23,8 +23,6 @@ end
 set(gca,'YLim',[0,length(speeds)]);
 set(gca,'YTick',1:length(speeds)/12:length(speeds)) 
 set(gca,'YTickLabel',[25;50;75;100;125;150;-25;-50;-75;-100;-125;-150]);    %sweep speeds
-
-
 
 
 

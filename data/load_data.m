@@ -73,6 +73,9 @@ if params.Results.GetSpikes
         fprintf('Can''t find spike file in %s.\n', datadir);
     end
 
+    % fprintf("sample rate %f\n", stimuli.param(1).samplerate);
+    fmt=['array =' repmat(' %1.0f ',1,10) '\n'];
+    fprintf(fmt, size(spikes.waveforms));
     spikes.timestamps = spikes.timestamps./stimuli.param(1).samplerate;
     
     % clusters file
@@ -114,6 +117,21 @@ end
 if ~isfield(param, 'datafile')
     [param.datafile] = deal([datadir filesep param(1).expid '-data.dat']);
 end
+
+%fprintf("class of the var %s", class(param.datafile));
+%fprintf("class of the var %s", param.datafile);
+data_file = dir([datadir filesep '*-data.dat']);
+    datacontent = [];
+    if ~isempty(data_file)
+        data_file = fullfile(datadir, data_file(1).name);
+        try
+            datacontent = load(data_file);
+        catch
+            fprintf('Can''t load %s.\n', data_file);
+        end   
+    end
+%fprintf("%d", datacontent{0});
+    
 
 % add additional time parameters
 if ~isfield(param, 'nseconds')

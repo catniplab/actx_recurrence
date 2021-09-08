@@ -59,7 +59,7 @@ start_samples = round(params.Results.Range(:, 1)*params.Results.Samplerate);
 stop_samples  = round(params.Results.Range(:, 2)*params.Results.Samplerate);
 samples       = stop_samples-start_samples;
 raster_offset = cumsum(samples);
-raster_offset = [0; raster_offset(1:end-1)];
+raster_offset = [0; raster_offset(1:end-1)]
 
 if sum(samples<=0)  % at least one range is incorrect
     return;
@@ -72,6 +72,7 @@ else
 end
 
 n_triggers = numel(triggers);
+fprintf("trigger and range count %d %d\n", n_triggers, n_ranges);
 
 raster = sparse(zeros(n_triggers, sum(samples)));
 
