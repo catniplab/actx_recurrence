@@ -5,10 +5,8 @@ import pandas as pd
 
 import matplotlib.pyplot as plt
 
-
 def load_data(foldername):
     fileslist = [f for f in os.listdir(foldername) if os.path.isfile(foldername+f)]
-    
     sample_rate = 10000.0
     ## opening -stimulti.mat
     stimuli_raw_file = [f for f in fileslist if "-stimuli.mat" in f][0]
@@ -24,6 +22,11 @@ def load_data(foldername):
         if(stimuli_raw_data[i]['type'][0][0] == 'tone'):
             stimuli_param = {'frequency':[], 'amplitude':[], 'ramp':[], 'duration':[]}
             stimuli_param['frequency'] = stimuli_raw_data[i][0]['param']['frequency'][0][0][0][0]
+            stimuli_param['amplitude'] = stimuli_raw_data[i][0]['param']['amplitude'][0][0][0][0]
+            stimuli_param['ramp'] = stimuli_raw_data[i][0]['param']['ramp'][0][0][0][0]
+            stimuli_param['duration'] = stimuli_raw_data[i][0]['param']['duration'][0][0][0][0]
+        if(stimuli_raw_data[i]['type'][0][0] == 'whitenoise'):
+            stimuli_param = {'amplitude':[], 'ramp':[], 'duration':[]}
             stimuli_param['amplitude'] = stimuli_raw_data[i][0]['param']['amplitude'][0][0][0][0]
             stimuli_param['ramp'] = stimuli_raw_data[i][0]['param']['ramp'][0][0][0][0]
             stimuli_param['duration'] = stimuli_raw_data[i][0]['param']['duration'][0][0][0][0]
@@ -100,7 +103,7 @@ def waveform_plot(timestamp, recording):
 
 def plot_raster(event_data):
     print("event data shape:", event_data.shape)
-    plt.eventplot(event_data, linelengths=0.6)
+    plt.eventplot(event_data, linelengths=0.9, linewidth = 0.4)
     plt.xlabel("time")
     plt.ylabel("event count")
     plt.show()
@@ -124,32 +127,43 @@ def sortnplot_eventraster(stimuli_df, spikes_df, rng):
     stop_samples = round(rng[1]*sample_rate)
     n_triggers = triggers.shape[0]
     n_samples = stop_samples - start_samples
-    raster = np.zeros([n_triggers, n_samples])
+    raster_full = np.zeros([n_triggers, n_samples])
+    raster = []
 
     # rows = []
     # columns = []
     for i in range(n_triggers):
         spikes = spikes_df.loc[(spikes_df['timestamps']>triggers[i]+rng[0]) &
-                                (spike_df['timestamps']<triggers[i]+rng[1])]
+                                (spikes_df['timestamps']<triggers[i]+rng[1])]
         spikes = spikes['timestamps'].to_numpy()
         if(spikes.shape[0] > 0):
             spike_pos = np.floor((spikes - triggers[i])*sample_rate) + 1 - start_samples
             # print(spike_pos)
-            raster[i, spike_pos.astype(int)] = spike_pos/sample_rate
+            raster_full[i, spike_pos.astype(int)] = spike_pos/sample_rate
+            raster.append(spike_pos/sample_rate)
             # rows.extend([i]*spike_pos.shape[0])
             # columns.extend(spike_pos.astype(int))
+        else:
+            raster.append([])
 
+    raster = np.asarray(raster)
     # data = np.ones([len(rows)])
     # raster = scipy.sparse.coo_matrix((data, (rows, columns)), shape = (n_triggers,
         # n_samples)).toarray()
     # print(np.sum(raster[30,:]))
-    return raster
+    return raster, raster_full
+
+def loaddata_withraster(foldername):
+    stimuli_df, spike_df = load_data(foldername)
+    rng = [-0.5, 2]
+    raster, raster_full = sortnplot_eventraster(stimuli_df, spike_df, rng)
+    return stimuli_df, spike_df, raster, raster_full
 
 if (__name__ == "__main__"):
     # foldername = "..//data/ACx_data_3/ACxCalyx/20200717-xxx999-002-001/"
     foldername = "..//data/ACx_data_1/ACxCalyx/20080930-002/"
     stimuli_df, spike_df = load_data(foldername)
     rng = [-0.5, 2]
-    raster = sortnplot_eventraster(stimuli_df, spike_df, rng)
+    raster, raster_full = sortnplot_eventraster(stimuli_df, spike_df, rng)
     plot_raster(raster)
  
