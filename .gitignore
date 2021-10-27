@@ -1,6 +1,7 @@
 # Custom directories
 data/*
 !data/*.m
+outputs/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

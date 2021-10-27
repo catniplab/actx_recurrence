@@ -4,7 +4,6 @@ import scipy.io, scipy
 import pandas as pd
 
 import matplotlib.pyplot as plt
-from plotting import plot_raster
 
 def load_data(foldername):
     fileslist = [f for f in os.listdir(foldername) if os.path.isfile(foldername+f)]
@@ -20,6 +19,19 @@ def load_data(foldername):
         stimuli['stim_length'].append(stimuli_raw_data[i]['stimlength'][0][0][0])
         stimuli['trigger'].append(stimuli_raw_data[i]['trigger'][0][0][0]/sample_rate)
         stimuli['datafile'].append(stimuli_raw_data[i]['datafile'][0][0][0])
+        if(stimuli_raw_data[i]['type'][0][0] == 'strfcloud'):
+            stimuli_param = {'durPipZZstrf':[], 'rampLenZZstrf':[], 'freqsZZstrf':[],
+                    'ordZZstrf':[], 'ampsZZstrf':[], 'counter':[], 'duration':[], 'next':[],
+                    'empiricalDur':[]}
+            stimuli_param['freqsZZstrf'] = stimuli_raw_data[i][0]['param']['freqsZZstrf'][0][0][0][0]
+            stimuli_param['rampLenZZstrf'] = stimuli_raw_data[i][0]['param']['rampLenZZstrf'][0][0][0][0]
+            stimuli_param['durPipZZstrf'] = stimuli_raw_data[i][0]['param']['durPipZZstrf'][0][0][0][0]
+            stimuli_param['ordZZstrf'] = stimuli_raw_data[i][0]['param']['ordZZstrf'][0][0][0][0]
+            stimuli_param['ampsZZstrf'] = stimuli_raw_data[i][0]['param']['ampsZZstrf'][0][0][0][0]
+            stimuli_param['counter'] = stimuli_raw_data[i][0]['param']['counter'][0][0][0][0]
+            stimuli_param['next'] = stimuli_raw_data[i][0]['param']['next'][0][0][0][0]
+            stimuli_param['empiricalDur'] = stimuli_raw_data[i][0]['param']['empiricalDur'][0][0][0][0]
+            stimuli_param['duration'] = stimuli_raw_data[i][0]['param']['duration'][0][0][0][0]
         if(stimuli_raw_data[i]['type'][0][0] == 'tone'):
             stimuli_param = {'frequency':[], 'amplitude':[], 'ramp':[], 'duration':[]}
             stimuli_param['frequency'] = stimuli_raw_data[i][0]['param']['frequency'][0][0][0][0]
@@ -96,8 +108,20 @@ def multichannel_waveform_plot(recordings):
             # ax[i,j].ylabel("voltage")
     plt.show()
 
+def waveform_plot(timestamp, recording):
+    plt.plot(timestamp, recording)
+    plt.xlabel("timestamp")
+    plt.ylabel("voltage")
+    plt.show()
 
-def sort_eventraster(stimuli_df, spikes_df, rng):
+def plot_raster(event_data):
+    print("event data shape:", event_data.shape)
+    plt.eventplot(event_data, linelengths=0.9, linewidth = 0.4)
+    plt.xlabel("time")
+    plt.ylabel("event count")
+    plt.show()
+
+def sortnplot_eventraster(stimuli_df, spikes_df, rng):
     ## select stimuli 
     fieldname = 'fmsweep'
     sample_rate = 10000
@@ -162,6 +186,7 @@ def get_eventraster(stimuli_df, spikes_df, rng, minduration=1.640):
                 stimuli_trigger+stimuli_duration+minduration])
 
     n_triggers = len(triggertimes)
+    print("trigger trials", n_triggers)
     start_samples = round(rng[0]*sample_rate)
     stop_samples = round(rng[1]*sample_rate)
     n_samples = stop_samples - start_samples
@@ -185,7 +210,7 @@ def get_eventraster(stimuli_df, spikes_df, rng, minduration=1.640):
     raster = np.asarray(raster)
     return raster, raster_full
 
-def loaddata_withraster(foldername):
+def loaddata_withraster_strf(foldername):
     stimuli_df, spike_df = load_data(foldername)
     # rng = [-0.5, 2]
     rng = [0, 1.640]

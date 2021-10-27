@@ -1,12 +1,17 @@
 import numpy as np
 import os, pickle
-from dataloader import loaddata_withraster
 import scipy
 from scipy.optimize import curve_fit
+import matplotlib.pyplot as plt
 from scipy.stats import norm, multivariate_normal
+
 from dich_gauss.dichot_gauss import DichotGauss 
 from dich_gauss.optim_dichot_gauss import get_bivargauss_cdf, find_root_bisection
-import matplotlib.pyplot as plt
+from dataloader import loaddata_withraster
+from dataloader_strf import loaddata_withraster_strf
+from utils import raster_fulltoevents, calculate_meanfiringrate, exponentialClass,\
+    measure_isi, measure_psth
+from plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata
 
 class dichotomizedgaussian_surrogate():
     def __init__(self, mfr, autocorr, data, delay):
@@ -59,14 +64,7 @@ class dichotomizedgaussian_surrogate():
         tau, a = leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize, b)#least sq fit 
         # plot_autocor(np.array(autocor), np.asarray(delay)*binsize, a, b, tau)#plotting autocorr
         # print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
-        return tau
-
-def raster_fulltoevents(raster_full, samplerate, sampletimespan):
-    raster = []
-    for i in range(raster_full.shape[0]):
-        rowidx=np.array(np.nonzero(raster_full[i]))
-        raster.append((rowidx/raster_full.shape[1])*(sampletimespan[1]-sampletimespan[0])+sampletimespan[0])
-    return raster
+        return tau, a
 
 def autocorrelation(sig, delay):
     autocor = []
@@ -104,31 +102,6 @@ def leastsquares_fit(autocor, delay, b):
     optval, optcov = curve_fit(exc_int.exponential_func, xdata, autocor) 
     return optval
 
-class exponentialClass:
-    def __init__(self):
-        self.b = 0
-
-    def exponential_func(self, t, tau, a):
-        return a * np.exp(-t/tau) + self.b
-
-def plot_autocor(autocor, delay, a, b, tau):
-    exc_int = exponentialClass()
-    exc_int.b = b
-    x_exponen = np.linspace(delay[0], delay[-1], 100)
-    y_exponen = exc_int.exponential_func(x_exponen, tau, a)
-    plt.plot(x_exponen, y_exponen, color='r')
-    plt.plot(delay, autocor, color='b', marker='o')
-    plt.xlabel('delay (s)')
-    plt.ylabel('autocorrelation')
-    plt.title('autocorrelation least squares fit')
-    # plt.ylim((0, 1000))
-    plt.show()
-
-def calculate_meanfiringrate(raster, sampletime):
-    mfs = []
-    for i in range(len(raster)):
-       mfs.append(len(raster[i])/(sampletime[1]-sampletime[0]))#mfs across time
-    return np.mean(mfs)#mean across trials
 
 def estimate_ogtau(foldername):
     #params
@@ -138,7 +111,14 @@ def estimate_ogtau(foldername):
     sampletimespan = [-0.5, 2]#s
     # sampletimespan *= 10 #100ms time units
 
-    stimuli_df, spike_df, raster, raster_full = loaddata_withraster(foldername)#fetch raw data
+    stimuli_df, spike_df, raster, raster_full = loaddata_withraster_strf(foldername)#fetch raw data
+
+    # measure isi and psth before resampling
+    isi_list = measure_isi(raster)
+    psth_measure = measure_psth(raster_full, binsize, sampletimespan[1]-sampletimespan[0],
+            samplerate)
+
+    # resampling with wider bins and fitting exponential curve to og data
     raster, raster_full = resample(raster, raster_full, binsize, samplerate)#resize bins
     # delay = np.linspace(delayrange[0], delayrange[1], 20)
     delay = [i for i in range(delayrange[0], delayrange[1])]#range of delays
@@ -148,34 +128,70 @@ def estimate_ogtau(foldername):
     b=(binsize*mfr)**2
     tau, a = leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize, b)#least sq fit 
     print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
+    ogest = [a, b, tau]
+
     # plot_autocor(np.array(autocor), np.asarray(delay)*binsize, a, b, tau)#plotting autocorr
     # return [a, b, tau, mfr, binsize, delay, binsize, autocor]
 
-    ## create surrogate and estimate 
+    ## create surrogate and estimate unbiased tau
     surrogate_taus = []
+    surrogate_as = []
     surr_iters = 400
     for i in range(surr_iters):
         dgauss_surr = dichotomizedgaussian_surrogate(rv_mean, autocor, raster_full, delay)
         _ = dgauss_surr.dichotomized_gauss()
-        tau_est = dgauss_surr.estimate_tau(binsize, samplerate, delayrange, sampletimespan)
+        tau_est, a_est = dgauss_surr.estimate_tau(binsize, samplerate, delayrange, sampletimespan)
         surrogate_taus.append(tau_est)
+        surrogate_as.append(a_est)
+
+    # check surrogate a's distribution by plotting it's hist
+    # plot_histdata(surrogate_as)
 
     surrogate_taus = np.array(surrogate_taus)
     params = scipy.stats.lognorm.fit(surrogate_taus)
     bias = params[0]-np.log(tau)
+    std_tau = params[1]
+    # print(np.exp(params[0]))
+    logunbiasedtau = np.log(tau) - bias
+    a_est = np.mean(surrogate_as)
 
-    print(np.exp(params[0]))
+    # intergrate the posteriors
+    dichgaussest = [a_est, b, np.exp(logunbiasedtau), std_tau]
+    print("dich gaus estimates a={}, b={}, tau={}, std={}, bias={}".format(a_est, b,
+        np.exp(logunbiasedtau), std_tau, bias))
+
+    return raster, raster_full, isi_list, psth_measure, np.asarray(delay)*binsize, autocor, mfr, ogest, dichgaussest
 
 
 
 if(__name__=="__main__"):
-    foldername = "..//data/ACx_data_{}/ACx{}/"
+    # prestrf dataset
+    foldername = "..//data/prestrf_data/ACx_data_{}/ACx{}/"
     datafiles = [1,2,3]
     cortexside = ["Calyx", "Thelo"]
 
-    # foldername = "..//data/ACx_data_1/ACxCalyx/20080930-002/"
-    foldername = "..//data/ACx_data_1/ACxCalyx/20170909-010/"
-    outputs = estimate_ogtau(foldername)
+    #strf dataset
+    # foldername = "../data/prestrf_data/ACx_data_{}/ACx{}/"
+    # datafiles = [1,2,3]
+    # cortexside = ["Calyx", "Thelo"]
+
+    # foldername = "../data/prestrf_data/ACx_data_1/ACxCalyx/20170909-010/"
+    foldername = "../data/strf_data/20210825-xxx999-002-001/"
+    # figloc = "../outputs/{}.png".format("20170909-010")
+    figloc = "../outputs/{}.png".format("20210825-xxx999-002-001")
+    raster, raster_full, isi_list, psth_measure, delay, autocor, mfr, ogest, dichgaussest =\
+        estimate_ogtau(foldername)
+    plot_neuronsummary(autocor, delay, raster, isi_list, psth_measure, ogest, dichgaussest,\
+            foldername, figloc)
+
+    dichgaussests = []
+    labels = []
+    mfrs = []
+    dichgaussests.append(dichgaussest)
+    labels.append("Calyx")
+    mfrs.append(mfr)
+    figloc = "../outputs/ests_{}.png".format("20170909-010")
+    plot_utauests(dichgaussests, mfrs, labels, figloc)
 
     # foldernames = []
     # cortexsides = []
@@ -188,11 +204,14 @@ if(__name__=="__main__"):
                 # cortexsides.append(ctxs)
 
     # datafiles = {'folderloc':foldernames, 'label':cortexsides}
-    # print(datafiles)
+    # # print(datafiles)
 
     # for count, dfs in enumerate(datafiles['folderloc']):
         # print("dfs", dfs)
-        # estimations = estimate_ogtau(dfs)
+        # try:
+            # estimations = estimate_ogtau(dfs)
+        # except:
+            # print("found exception")
         # print("label: ", datafiles['label'][count])
 
 
