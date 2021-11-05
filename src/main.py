@@ -10,8 +10,8 @@ from dich_gauss.optim_dichot_gauss import get_bivargauss_cdf, find_root_bisectio
 from dataloader import loaddata_withraster
 from dataloader_strf import loaddata_withraster_strf
 from utils import raster_fulltoevents, calculate_meanfiringrate, exponentialClass,\
-    measure_isi, measure_psth
-from plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata
+    measure_isi, measure_psth, calculate_fanofactor
+from plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata, plot_rasterpsth
 
 class dichotomizedgaussian_surrogate():
     def __init__(self, mfr, autocorr, data, delay):
@@ -102,20 +102,52 @@ def leastsquares_fit(autocor, delay, b):
     optval, optcov = curve_fit(exc_int.exponential_func, xdata, autocor) 
     return optval
 
-
-def estimate_ogtau(foldername):
+def testingfunc(foldername, dataset_type, filename):
     #params
     binsize = 0.02#s = 20ms
     delayrange = [1, 20]#units
     samplerate = 10000#samples per second
-    sampletimespan = [-0.5, 2]#s
+    # sampletimespan = [0, 1.640]#s
+    sampletimespan = [-0.5, 1.640]
+    minduration = 1.640
     # sampletimespan *= 10 #100ms time units
 
-    stimuli_df, spike_df, raster, raster_full = loaddata_withraster_strf(foldername)#fetch raw data
+    if(dataset_type == 'strf'):
+        stimuli_df, spike_df, raster, raster_full = loaddata_withraster_strf(foldername,
+                sampletimespan, minduration)#fetch raw data
+    else:
+        stimuli_df, spike_df, raster, raster_full = loaddata_withraster(foldername, sampletimespan,
+                minduration)#fetch raw data
 
     # measure isi and psth before resampling
-    isi_list = measure_isi(raster)
+    isi_list, isis_list = measure_isi(raster)
     psth_measure = measure_psth(raster_full, binsize, sampletimespan[1]-sampletimespan[0],
+            samplerate)
+    fanof = calculate_fanofactor(isis_list, raster, samplerate, binsize)
+
+    plot_rasterpsth(raster, psth_measure, isi_list, "../outputs/rasterpsth_{}.png".format(filename),
+            binsize*1000, fanof)
+
+
+def estimate_ogtau(foldername, dataset_type):
+    #params
+    binsize = 0.02#s = 20ms
+    delayrange = [1, 20]#units
+    samplerate = 10000#samples per second
+    sampletimespan = [0, 1.640]#s
+    minduration = 1.640
+    # sampletimespan *= 10 #100ms time units
+
+    if(dataset_type == 'strf'):
+        stimuli_df, spike_df, raster, raster_full = loaddata_withraster_strf(foldername,
+                sampletimespan, minduration)#fetch raw data
+    else:
+        stimuli_df, spike_df, raster, raster_full = loaddata_withraster(foldername, sampletimespan,
+                minduration)#fetch raw data
+
+    # measure isi and psth before resampling
+    isi_list, _ = measure_isi(raster)
+    psth_measure = measure_psth(raster_full, binsize, sampletimespan[1] - sampletimespan[0],
             samplerate)
 
     # resampling with wider bins and fitting exponential curve to og data
@@ -166,52 +198,70 @@ def estimate_ogtau(foldername):
 
 if(__name__=="__main__"):
     # prestrf dataset
-    foldername = "..//data/prestrf_data/ACx_data_{}/ACx{}/"
-    datafiles = [1,2,3]
-    cortexside = ["Calyx", "Thelo"]
-
-    #strf dataset
     # foldername = "../data/prestrf_data/ACx_data_{}/ACx{}/"
     # datafiles = [1,2,3]
     # cortexside = ["Calyx", "Thelo"]
+    # dataset_type = 'prestrf'
 
+    #strf dataset
+    foldername = "../data/strf_data/"
+    cortexside = ["Calyx", "Thelo"]
+    dataset_type = 'strf'
+
+    ## single datafile test
     # foldername = "../data/prestrf_data/ACx_data_1/ACxCalyx/20170909-010/"
-    foldername = "../data/strf_data/20210825-xxx999-002-001/"
     # figloc = "../outputs/{}.png".format("20170909-010")
-    figloc = "../outputs/{}.png".format("20210825-xxx999-002-001")
-    raster, raster_full, isi_list, psth_measure, delay, autocor, mfr, ogest, dichgaussest =\
-        estimate_ogtau(foldername)
-    plot_neuronsummary(autocor, delay, raster, isi_list, psth_measure, ogest, dichgaussest,\
-            foldername, figloc)
+    # dataset_type = 'prestrf'
+    # foldername = "../data/strf_data/20210825-xxx999-002-001/"
+    # dataset_type = 'strf'
+    # figloc = "../outputs/{}.png".format("20210825-xxx999-002-001")
+    # raster, raster_full, isi_list, psth_measure, delay, autocor, mfr, ogest, dichgaussest =\
+        # estimate_ogtau(foldername, dataset_type)
+    # plot_neuronsummary(autocor, delay, raster, isi_list, psth_measure, ogest, dichgaussest,\
+            # foldername, figloc)
 
     dichgaussests = []
     labels = []
     mfrs = []
-    dichgaussests.append(dichgaussest)
-    labels.append("Calyx")
-    mfrs.append(mfr)
-    figloc = "../outputs/ests_{}.png".format("20170909-010")
-    plot_utauests(dichgaussests, mfrs, labels, figloc)
+    # dichgaussests.append(dichgaussest)
+    # labels.append("Calyx")
+    # mfrs.append(mfr)
+    # figloc = "../outputs/ests_{}.png".format("20170909-010")
+    # plot_utauests(dichgaussests, mfrs, labels, figloc)
 
-    # foldernames = []
-    # cortexsides = []
-    # for dfs in datafiles:
-        # for ctxs in cortexside:
-            # fname = foldername.format(dfs, ctxs)
-            # foldersinfname = os.listdir(fname)
-            # for f in foldersinfname:
-                # foldernames.append(fname+f+'/')
-                # cortexsides.append(ctxs)
+    foldernames = []
+    cortexsides = []
+    filenames = []
+    if(dataset_type=='prestrf'):
+        for dfs in datafiles:
+            for ctxs in cortexside:
+                fname = foldername.format(dfs, ctxs)
+                foldersinfname = os.listdir(fname)
+                for f in foldersinfname:
+                    foldernames.append(fname+f+'/')
+                    cortexsides.append(ctxs)
+                    filenames.append(f)
+    else:
+        foldersinfname = os.listdir(foldername)
+        for f in foldersinfname:
+            foldernames.append(foldername+f+'/')
+            cortexsides.append('NA')
+            filenames.append(f)
 
-    # datafiles = {'folderloc':foldernames, 'label':cortexsides}
-    # # print(datafiles)
+    datafiles = {'folderloc':foldernames, 'label':cortexsides, 'filenames':filenames}
+    # print(datafiles)
 
-    # for count, dfs in enumerate(datafiles['folderloc']):
-        # print("dfs", dfs)
-        # try:
-            # estimations = estimate_ogtau(dfs)
-        # except:
-            # print("found exception")
-        # print("label: ", datafiles['label'][count])
+    for count, dfs in enumerate(datafiles['folderloc']):
+        figloc = "../outputs/{}.png".format(datafiles['filenames'][count])
+        print("dfs", dfs)
+        # raster, raster_full, isi_list, psth_measure, delay, autocor, mfr, ogest, dichgaussest =\
+        # estimate_ogtau(dfs, dataset_type)
+        testingfunc(dfs, dataset_type, datafiles['filenames'][count])
+        # mfrs.append(mfr)
+        # dichgaussests.append(dichgaussest)
+        # labels.append(datafiles['label'][count])
+        # plot_neuronsummary(autocor, delay, raster, isi_list, psth_measure, ogest, dichgaussest,\
+                # foldername, figloc)
+        print("label: ", datafiles['label'][count])
 
 

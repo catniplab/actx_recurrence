@@ -128,7 +128,7 @@ def sort_eventraster(stimuli_df, spikes_df, rng):
         if(spikes.shape[0] > 0):
             spike_pos = np.floor((spikes - triggers[i])*sample_rate) + 1 - start_samples
             # print(spike_pos)
-            raster_full[i, spike_pos.astype(int)] = spike_pos/sample_rate
+            raster_full[i, spike_pos.astype(int)] = 1
             raster.append(spike_pos/sample_rate)
             # rows.extend([i]*spike_pos.shape[0])
             # columns.extend(spike_pos.astype(int))
@@ -175,7 +175,7 @@ def get_eventraster(stimuli_df, spikes_df, rng, minduration=1.640):
         if(spikes.shape[0] > 0):
             spike_pos = np.floor((spikes - triggertimes[i][0][0])*sample_rate) + 1 - start_samples
             # print(spike_pos)
-            raster_full[i, spike_pos.astype(int)] = spike_pos/sample_rate
+            raster_full[i, spike_pos.astype(int)] = 1
             raster.append(spike_pos/sample_rate)
             # rows.extend([i]*spike_pos.shape[0])
             # columns.extend(spike_pos.astype(int))
@@ -185,11 +185,11 @@ def get_eventraster(stimuli_df, spikes_df, rng, minduration=1.640):
     raster = np.asarray(raster)
     return raster, raster_full
 
-def loaddata_withraster(foldername):
+def loaddata_withraster(foldername, rng, minduration):
     stimuli_df, spike_df = load_data(foldername)
     # rng = [-0.5, 2]
-    rng = [0, 1.640]
-    minduration = 1.640
+    # rng = [0, 1.640]
+    # minduration = 1.640
     # raster, raster_full = sort_eventraster(stimuli_df, spike_df, rng)
     raster, raster_full = get_eventraster(stimuli_df, spike_df, rng, minduration)
     return stimuli_df, spike_df, raster, raster_full

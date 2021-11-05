@@ -1,6 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import os, pickle
+from scipy.interpolate import make_interp_spline
+from scipy.ndimage import gaussian_filter1d
+import seaborn
 
 from utils import exponentialClass
 
@@ -30,6 +33,31 @@ def plot_waveform(timestamp, recording):
     plt.ylabel("voltage")
     plt.show()
 
+def plot_rasterpsth(raster, psth, isi, figloc, binsizet, fanof):
+    fig, ax = plt.subplots(1, 3, figsize=(30,10))
+
+    # plot raster
+    ax[0].eventplot(raster, linelengths=0.9, linewidth = 0.6)
+    ax[0].set_xlabel("time")
+    ax[0].set_ylabel("event count")
+
+    # plot PSTH
+    psthx = [i*binsizet for i in range(len(psth))]
+    ax[1].bar(psthx, psth, alpha=0.5, align='edge', width=binsizet)
+    ax[1].set_xlabel("time")
+    ax[1].set_ylabel("count")
+    y_ = gaussian_filter1d(psth, 3)
+    ax[1].plot(psthx, y_, '-', color='r')
+
+    #plot ISI hist
+    ax[2].hist(isi, bins=30)
+    ax[2].set_xlabel("spike time diff")
+    ax[2].set_ylabel("count")
+
+    fig.suptitle("Fano factor = {}".format(fanof))
+    plt.savefig(figloc, bbox_inches='tight')
+    plt.close()
+
 def plot_neuronsummary(autocorr, delay, raster, isi, psth, og_est, dichgaus_est, title, figloc):
     # plot 4 subfigures - 
         # raster
@@ -39,7 +67,7 @@ def plot_neuronsummary(autocorr, delay, raster, isi, psth, og_est, dichgaus_est,
 
     # plot raster
     fig, ax = plt.subplots(1, 4, figsize=(40,10))
-    ax[0].eventplot(raster, linelengths=0.9, linewidth = 0.4)
+    ax[0].eventplot(raster, linelengths=0.9, linewidth = 0.6)
     ax[0].set_xlabel("time")
     ax[0].set_ylabel("event count")
 
@@ -81,6 +109,7 @@ def plot_neuronsummary(autocorr, delay, raster, isi, psth, og_est, dichgaus_est,
 
     fig.suptitle(title)
     plt.savefig(figloc, bbox_inches='tight')
+    plt.close()
 
 def plot_utauests(estimates, mfrs, labels, figloc):
     fig = plt.figure(figsize=(10,10))

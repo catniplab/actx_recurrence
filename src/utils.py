@@ -20,6 +20,20 @@ def calculate_meanfiringrate(raster, sampletime):
        mfs.append(len(raster[i])/(sampletime[1]-sampletime[0]))#mfs across time
     return np.mean(mfs)#mean across trials
 
+def calculate_fanofactor(isi, raster, samplerate, binsize):
+    ## mean of fano factor on multiple trials
+    # fanof = (np.var(data, ddof=1)/np.mean(data))
+    fanofs = []
+    print("isi len", len(isi))
+    for i in range(len(isi)):
+        fanofi = np.var(isi[i],ddof=1)/(np.mean(isi[i])+1e-8)
+        if(not np.isnan(fanofi)):
+            fanofs.append(fanofi)
+    # fanof = np.sum(fanofs)/len(isi)
+    fanof = np.mean(fanofs)
+    # print(fanofs)
+    return fanof 
+
 class exponentialClass:
     def __init__(self):
         self.b = 0
@@ -29,18 +43,22 @@ class exponentialClass:
 
 def measure_isi(raster):
     isi_list = []
+    isis_list = []
     for i in range(len(raster)):
         spktimesi = raster[i]
         isii =  np.asarray(spktimesi[1:]) - np.asarray(spktimesi[0:-1])
         isi_list.extend(isii.tolist())
-    return isi_list
+        isis_list.append(isii)
+    return isi_list, isis_list
 
 def measure_psth(raster_full, binsizet, period, samplerate):
     binsize = int(samplerate*binsizet)
     totalbins = int((period*samplerate)/binsize)
+    print(period, binsize, totalbins, raster_full.shape)
     normspikesperbin = []
     for i in range(totalbins):
         binslice = raster_full[:, i*binsize:(i+1)*binsize]
+        # print(binslice.shape)
         spikecount = np.sum(binslice)
         normspikesperbin.append(spikecount/(raster_full.shape[0]*binsize))
     return normspikesperbin
