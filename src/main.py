@@ -10,7 +10,7 @@ from dich_gauss.optim_dichot_gauss import get_bivargauss_cdf, find_root_bisectio
 from dataloader import loaddata_withraster
 from dataloader_strf import loaddata_withraster_strf
 from utils import raster_fulltoevents, calculate_meanfiringrate, exponentialClass,\
-    measure_isi, measure_psth, calculate_fanofactor
+    measure_isi, measure_psth, calculate_fanofactor, calculate_coeffvar
 from plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata, plot_rasterpsth
 
 class dichotomizedgaussian_surrogate():
@@ -68,6 +68,7 @@ class dichotomizedgaussian_surrogate():
 
 def autocorrelation(sig, delay):
     autocor = []
+    print(sig.shape)
     for d in delay:
         #shift the signal
         sig_delayed = np.zeros_like(sig)
@@ -125,14 +126,55 @@ def testingfunc(foldername, dataset_type, filename):
             samplerate)
     fanof = calculate_fanofactor(isis_list, raster, samplerate, binsize)
 
-    plot_rasterpsth(raster, psth_measure, isi_list, "../outputs/rasterpsth_{}.png".format(filename),
-            binsize*1000, fanof)
+    plot_rasterpsth(raster, psth_measure, isi_list, "../outputs/rasterpsth_{}.pdf".format(filename),
+            binsize*1000, sampletimespan, fanof)
 
+def testingfunc_onetrial(foldername, dataset_type, params, filename):
+    #params
+    binsize = params['binsize']#s = 20ms
+    delayrange = params['delayrange']#units
+    samplerate = params['samplerate']#samples per second
+    # sampletimespan = [0, 1.640]#s
+    sampletimespan = params['sampletimespan']
+    minduration = params['minduration']
+    # sampletimespan *= 10 #100ms time units
+
+    if(dataset_type == 'strf'):
+        stimuli_df, spike_df, raster, raster_full, sampletimespan = loaddata_withraster_strf(foldername,
+                sampletimespan, minduration)#fetch raw data
+    else:
+        stimuli_df, spike_df, raster, raster_full, sampletimespan = loaddata_withraster(foldername, sampletimespan,
+                minduration)#fetch raw data
+
+    # measure isi and psth before resampling
+    isi_list, isis_list = measure_isi(raster)
+    psth_measure = measure_psth(raster_full, binsize, sampletimespan[1]-sampletimespan[0],
+            samplerate)
+    fanof = calculate_fanofactor(isis_list, raster, samplerate, binsize)
+    coeffvar = calculate_coeffvar(isis_list)
+
+    # plot_rasterpsth(raster, psth_measure, isi_list, "../outputs/rasterpsth_{}.pdf".format(filename),
+            # binsize*1000, sampletimespan, fanof)
+
+    delay = [i for i in range(delayrange[0], delayrange[1])]#range of delays
+    mfr = calculate_meanfiringrate(raster, sampletimespan)#mean firing rate
+    rv_mean = np.mean(raster_full)
+    autocor = autocorrelation(raster_full, delay)#autocorr calculation
+    b=(binsize*mfr)**2
+    tau, a = leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize, b)#least sq fit 
+    print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
+    print("coefficient of variance = {}".format(coeffvar))
+    ogest = [a, b, tau]
+
+    dichgaussest = None
+    figtitle = figloc+" mfr={} ".format(mfr)+" coeffvar={} ".format(coeffvar)+" mean ISI={} "\
+        .format(np.mean(isi_list)+" tau est={} ".format(tau))
+    return raster, raster_full, isi_list, psth_measure, autocor, mfr, ogest, dichgaussest, figtitle
 
 def estimate_ogtau(foldername, dataset_type):
     #params
     binsize = 0.02#s = 20ms
-    delayrange = [1, 20]#units
+    delayrange = [1, 300]#units
     samplerate = 10000#samples per second
     sampletimespan = [0, 1.640]#s
     minduration = 1.640
@@ -208,6 +250,16 @@ if(__name__=="__main__"):
     cortexside = ["Calyx", "Thelo"]
     dataset_type = 'strf'
 
+    #params
+    params = {}
+    params['binsize'] = 0.02#s = 20ms
+    params['delayrange'] = [1, 300]#units
+    params['samplerate'] = 10000#samples per second
+    # sampletimespan = [0, 1.640]#s
+    params['sampletimespan'] = [100, 300]
+    params['minduration'] = 1.640
+    # sampletimespan *= 10 #100ms time units
+
     ## single datafile test
     # foldername = "../data/prestrf_data/ACx_data_1/ACxCalyx/20170909-010/"
     # figloc = "../outputs/{}.png".format("20170909-010")
@@ -252,16 +304,18 @@ if(__name__=="__main__"):
     # print(datafiles)
 
     for count, dfs in enumerate(datafiles['folderloc']):
-        figloc = "../outputs/{}.png".format(datafiles['filenames'][count])
+        figloc = "../outputs/{}.pdf".format(datafiles['filenames'][count])
         print("dfs", dfs)
-        # raster, raster_full, isi_list, psth_measure, delay, autocor, mfr, ogest, dichgaussest =\
-        # estimate_ogtau(dfs, dataset_type)
-        testingfunc(dfs, dataset_type, datafiles['filenames'][count])
+        # raster, raster_full, isi_list, psth_measure, autocor, mfr, ogest, dichgaussest =\
+        # estimate_ogtau(dfs, dataset_type, params)
+        raster, raster_full, isi_list, psth_measure, autocor, mfr, ogest, dichgaussest,\
+            figtitle = testingfunc_onetrial(dfs, dataset_type, params, datafiles['filenames'][count])
         # mfrs.append(mfr)
         # dichgaussests.append(dichgaussest)
         # labels.append(datafiles['label'][count])
-        # plot_neuronsummary(autocor, delay, raster, isi_list, psth_measure, ogest, dichgaussest,\
-                # foldername, figloc)
+        # figtitle = foldername
+        plot_neuronsummary(autocor, params, raster, isi_list, psth_measure, ogest, dichgaussest,\
+                figtitle, figloc)
         print("label: ", datafiles['label'][count])
 
 

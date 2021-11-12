@@ -24,15 +24,21 @@ def calculate_fanofactor(isi, raster, samplerate, binsize):
     ## mean of fano factor on multiple trials
     # fanof = (np.var(data, ddof=1)/np.mean(data))
     fanofs = []
-    print("isi len", len(isi))
+    # print("isi len", len(isi))
     for i in range(len(isi)):
         fanofi = np.var(isi[i],ddof=1)/(np.mean(isi[i])+1e-8)
         if(not np.isnan(fanofi)):
             fanofs.append(fanofi)
-    # fanof = np.sum(fanofs)/len(isi)
-    fanof = np.mean(fanofs)
+    fanof = np.sum(fanofs)/len(isi)
+    # fanof = np.mean(fanofs)
     # print(fanofs)
     return fanof 
+
+def calculate_coeffvar(isi):
+    coeffvar = []
+    for i in range(len(isi)):
+        coeffvar.append(np.std(isi)/np.mean(isi))
+    return coeffvar
 
 class exponentialClass:
     def __init__(self):

@@ -33,7 +33,7 @@ def plot_waveform(timestamp, recording):
     plt.ylabel("voltage")
     plt.show()
 
-def plot_rasterpsth(raster, psth, isi, figloc, binsizet, fanof):
+def plot_rasterpsth(raster, psth, isi, figloc, binsizet, rng, fanof):
     fig, ax = plt.subplots(1, 3, figsize=(30,10))
 
     # plot raster
@@ -42,7 +42,7 @@ def plot_rasterpsth(raster, psth, isi, figloc, binsizet, fanof):
     ax[0].set_ylabel("event count")
 
     # plot PSTH
-    psthx = [i*binsizet for i in range(len(psth))]
+    psthx = [i*binsizet+rng[0]*1000 for i in range(len(psth))]
     ax[1].bar(psthx, psth, alpha=0.5, align='edge', width=binsizet)
     ax[1].set_xlabel("time")
     ax[1].set_ylabel("count")
@@ -58,12 +58,19 @@ def plot_rasterpsth(raster, psth, isi, figloc, binsizet, fanof):
     plt.savefig(figloc, bbox_inches='tight')
     plt.close()
 
-def plot_neuronsummary(autocorr, delay, raster, isi, psth, og_est, dichgaus_est, title, figloc):
+def plot_neuronsummary(autocorr, params, raster, isi, psth, og_est, dichgaus_est, title, figloc):
     # plot 4 subfigures - 
         # raster
         # ISI
         # psth
         # autocorr; og_est; dichgauss_est
+
+    #params
+    delayrange = [i for i in range(params['delayrange'][0], params['delayrange'][1])]
+    delay = np.asarray(delayrange)*params['binsize']
+    binsize = params['binsize']
+    rng = params['sampletimespan']
+    samplerate = params['samplerate']
 
     # plot raster
     fig, ax = plt.subplots(1, 4, figsize=(40,10))
@@ -72,39 +79,40 @@ def plot_neuronsummary(autocorr, delay, raster, isi, psth, og_est, dichgaus_est,
     ax[0].set_ylabel("event count")
 
     # plot ISI 
-    ax[1].hist(isi, bins=10)
+    ax[1].hist(isi, bins=1000)
     ax[1].set_xlabel("spike time diff")
     ax[1].set_ylabel("count")
 
     # plot PSTH
-    psthx = [i for i in range(len(psth))]
+    psthx = [i*binsize for i in range(len(psth))]
+    # psthx = [i for i in range(len(psth))]
     ax[2].bar(psthx, psth)
     ax[2].set_xlabel("spike counts")
     ax[2].set_ylabel("count")
 
     # plot autocorss
     ax[3].plot(delay, autocorr, 'b')
-    
     a,b,tau = og_est
     exc_int = exponentialClass()
     exc_int.b = b
-    x_exponen = np.linspace(delay[0], delay[-1], 100)
+    x_exponen = np.linspace(delayrange[0], delayrange[-1], 100)*binsize
     y_exponen = exc_int.exponential_func(x_exponen, tau, a)
     ax[3].plot(x_exponen, y_exponen, 'r')
 
-    a, b, tau, std = dichgaus_est
-    exc_int = exponentialClass()
-    exc_int.b = b
-    x_exponen = np.linspace(delay[0], delay[-1], 100)
-    y_exponen = exc_int.exponential_func(x_exponen, tau, a)
-    y_exponenpstd = exc_int.exponential_func(x_exponen, tau+std, a)
-    y_exponenmstd = exc_int.exponential_func(x_exponen, tau-std, a)
-    ax[3].plot(x_exponen, y_exponen, 'g')
-    ax[3].fill_between(x_exponen, y_exponen - y_exponenmstd, y_exponen + y_exponenpstd,
-                 color='g', alpha=0.2)
+    if(dichgaus_est is not None):
+        a, b, tau, std = dichgaus_est
+        exc_int = exponentialClass()
+        exc_int.b = b
+        x_exponen = np.linspace(delay[0], delay[-1], 100)
+        y_exponen = exc_int.exponential_func(x_exponen, tau, a)
+        y_exponenpstd = exc_int.exponential_func(x_exponen, tau+std, a)
+        y_exponenmstd = exc_int.exponential_func(x_exponen, tau-std, a)
+        ax[3].plot(x_exponen, y_exponen, 'g')
+        ax[3].fill_between(x_exponen, y_exponen - y_exponenmstd, y_exponen + y_exponenpstd,
+                     color='g', alpha=0.2)
 
-    ax[3].set_xlabel("autocorrelation value")
-    ax[3].set_ylabel("delay")
+    ax[3].set_ylabel("autocorrelation value")
+    ax[3].set_xlabel("delay")
     ax[3].set_ylim(bottom=0.0)
 
     fig.suptitle(title)

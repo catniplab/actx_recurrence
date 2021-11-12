@@ -196,13 +196,15 @@ def get_eventraster(stimuli_df, spikes_df, rng, minduration=1.640):
     raster = []
 
     for i in range(n_triggers):
-        spikes = spikes_df.loc[(spikes_df['timestamps']>triggertimes[i][0][0]+rng[0]) &
-                                (spikes_df['timestamps']<triggertimes[i][0][0]+rng[1])]
+        spikes = spikes_df.loc[(spikes_df['timestamps']>(triggertimes[i][0][0]+rng[0])) &
+                                (spikes_df['timestamps']<(triggertimes[i][0][0]+rng[1]))]
         spikes = spikes['timestamps'].to_numpy()
         if(spikes.shape[0] > 0):
-            spike_pos = np.floor((spikes - triggertimes[i][0][0])*sample_rate) + 1 - start_samples
+            spike_pos = np.floor((spikes - triggertimes[i][0][0])*sample_rate) + 1 +\
+                np.abs(start_samples)
             # print(spike_pos)
             raster_full[i, spike_pos.astype(int)] = 1
+            spike_pos = np.floor((spikes - triggertimes[i][0][0])*sample_rate) + 1
             raster.append(spike_pos/sample_rate)
             # rows.extend([i]*spike_pos.shape[0])
             # columns.extend(spike_pos.astype(int))
@@ -212,14 +214,39 @@ def get_eventraster(stimuli_df, spikes_df, rng, minduration=1.640):
     raster = np.asarray(raster)
     return raster, raster_full
 
+def get_eventraster_onetrial(stimuli_df, spikes_df, rng, minduration=1.640):
+    ## load the entire data as a single trial
+    sample_rate = 10000
+    numstimulis = stimuli_df.size
+    triggertimes = []
+    raster = []
+    rng = [0, spikes_df['timestamps'].tolist()[-1]]
+
+    spikes = spikes_df['timestamps'].loc[(spikes_df['timestamps']>rng[0]) &
+            (spikes_df['timestamps']<rng[1])]
+    # print(spikes)
+    print(rng)
+    # spikes = spikes/sample_rate
+    raster.append(spikes.tolist())
+    total_len = raster[0][-1]
+    print(total_len)
+    raster_full = np.zeros([1, int(total_len*sample_rate)+1])
+    for i in range(len(raster[0])):
+        # raster_full[0, int(spikes_df['timestamps'][i]/sample_rate)]=1
+        raster_full[0, int((raster[0][i]-rng[0])*sample_rate)]=1
+
+    raster = np.asarray(raster)
+    return raster, raster_full, rng
+
 def loaddata_withraster_strf(foldername, rng, minduration):
     stimuli_df, spike_df = load_data(foldername)
     # rng = [-0.5, 2]
     # rng = [0, 1.640]
     # minduration = 1.640
     # raster, raster_full = sort_eventraster(stimuli_df, spike_df, rng)
-    raster, raster_full = get_eventraster(stimuli_df, spike_df, rng, minduration)
-    return stimuli_df, spike_df, raster, raster_full
+    # raster, raster_full = get_eventraster(stimuli_df, spike_df, rng, minduration)
+    raster, raster_full, rng = get_eventraster_onetrial(stimuli_df, spike_df, rng, minduration)
+    return stimuli_df, spike_df, raster, raster_full, rng
 
 if (__name__ == "__main__"):
     # foldername = "..//data/ACx_data_3/ACxCalyx/20200717-xxx999-002-001/"
