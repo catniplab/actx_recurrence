@@ -173,10 +173,10 @@ def get_eventraster(stimuli_df, spikes_df, rng, minduration=1.640, sample_rate =
     raster = np.asarray(raster)
     return raster, raster_full
 
-def get_stimulifreq_barebone(stimuli_df, total_time, timebin, samplerate, freqrange): #timebin in s
-    numstimulis = stimuli_df.size
-    stimuli_bare_freq = np.zeros((1, int(total_time*samplerate)))
-    stimuli_bare_amp = np.zeros((1, int(total_time*samplerate)))
+def get_stimulifreq_barebone(stimuli_df, total_time, timebin, sample_rate, freqrange): #timebin in s
+    numstimulis = stimuli_df.shape[0]
+    stimuli_bare_freq = np.zeros((1, int(total_time*sample_rate)))
+    stimuli_bare_amp = np.zeros((1, int(total_time*sample_rate)))
     for i in range(numstimulis):
         stim_i = stimuli_df.iloc[i]
         stim_i_params = stimuli_df.iloc[i]['param']
@@ -208,12 +208,12 @@ def get_stimulifreq_barebone(stimuli_df, total_time, timebin, samplerate, freqra
                 stimuli_bare_freq[0, stim_i_start+j] = rand_freq
                 stimuli_bare_amp[0, stim_i_start+j] = amp_i
 
-    binsize = int(timebin*samplerate)
-    binned_stimuli_bare_freq = np.zeros((1, int(total_time*samplerate)/binsize))
-    binned_stimuli_bare_amp = np.zeros((1, int(total_time*samplerate)/binsize))
-    for bn in range(int(total_time*samplerate)/binsize):
-        binned_stimuli_bare_freq[0, bn] = mean(stimuli_bare_freq[0, bn*binsize:(bn+1)*binsize])
-        binned_stimuli_bare_amp[0, bn] = mean(stimuli_bare_amp[0, bn*binsize:(bn+1)*binsize])
+    binsize = int(timebin*sample_rate)
+    binned_stimuli_bare_freq = np.zeros((1, int((total_time*sample_rate)/binsize)))
+    binned_stimuli_bare_amp = np.zeros((1, int((total_time*sample_rate)/binsize)))
+    for bn in range(int((total_time*sample_rate)/binsize)):
+        binned_stimuli_bare_freq[0, bn] = np.mean(stimuli_bare_freq[0, bn*binsize:(bn+1)*binsize])
+        binned_stimuli_bare_amp[0, bn] = np.mean(stimuli_bare_amp[0, bn*binsize:(bn+1)*binsize])
 
     return binned_stimuli_bare_freq, binned_stimuli_bare_amp
 
