@@ -173,7 +173,7 @@ def get_eventraster(stimuli_df, spikes_df, rng, minduration=1.640, sample_rate =
     raster = np.asarray(raster)
     return raster, raster_full
 
-def get_stimulifreq_barebone(stimuli_df, total_time, timebin=0.001, samplerate): #timebin in s
+def get_stimulifreq_barebone(stimuli_df, total_time, timebin, samplerate, freqrange): #timebin in s
     numstimulis = stimuli_df.size
     stimuli_bare_freq = np.zeros((1, int(total_time*samplerate)))
     stimuli_bare_amp = np.zeros((1, int(total_time*samplerate)))
@@ -204,7 +204,7 @@ def get_stimulifreq_barebone(stimuli_df, total_time, timebin=0.001, samplerate):
                 stimuli_bare_amp[0, stim_i_start+j] = amp_i
             elif(stim_i['type']=='whitenoise'):
                 amp_i = stim_i_params['amplitude']
-                rand_freq = np.random.uniform(0, 1, (1,1))
+                rand_freq = np.random.uniform(freqrange[0], freqrange[1], (1,1))
                 stimuli_bare_freq[0, stim_i_start+j] = rand_freq
                 stimuli_bare_amp[0, stim_i_start+j] = amp_i
 

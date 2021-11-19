@@ -3,23 +3,46 @@ import matplotlib.pyplot as plt
 import os
 import scipy
 
+import torch
+import torch.nn as nn
+import torch.nn.utils.parametrize as parametrize
+from torch.utils.data import Dataset, DataLoader
+
 from dataloader import load_data, get_eventraster, get_stimulifreq_barebone
 from dataloader_strf import loaddata_withraster_strf
 from utils import raster_fulltoevents, exponentialClass, spectral_resample
 from plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata,\
     plot_rasterpsth, plot_spectrogram
 
-class strfestimation():
-    def __init__(self, params):
+class strfdataset(Dataset):
+    def __init__(self, params, stimuli_df, spikes_df):
         self.params = params
-        self.frequency_bins =\
-            int((params['freqrange'][1]-params['freqrange'][0])/params['freqbinsize'])
-        self.time_bins =\
-            int((params['strf_timerange'][1]-params['strf_timerange'][0])/params['strf_timebinsize'])
-        self.strf_params = np.random.rand((self.frequency_bins, self.time_bins))
-        self.hist_bins = int(params['hist_size']/params['strf_timebinsize'])
-        self.history_filter = np.random.rand((self.hist_bins, 1))
-    
+        self.device = params['device']
+        self.spikes_df = spikes_df
+        self.stimuli_df = stimuli_df
+        spiketimes = spike_df['timestamps'].to_numpy() # in seconds
+        total_time = np.ceil(spiketimes[-1]+1) #s
+        samples_per_bin = int(params['samplerate']*params['strf_timebinsize']) #num samples per bin
+        self.spikes_binned = torch.tensor(self.binned_spikes(params, spiketimes),
+                device=self.device)
+        self.binned_freq, self.binned_amp = get_stimulifreq_barebone(stimuli_df, total_time, timebin,
+                params['samplerate'], params['freqrange'])
+        self.binned_freq = torch.tensor(self.binned_freq, device=self.device)
+        self.binned_amp = torch.tensor(self.binned_amp, device=self.device)
+        self.spiking_bins = torch.nonzero(self.spikes_binned)
+
+    def __len__(self):
+        return self.spiking_bins.shape[0]
+
+    def __getitem__(self, idx):
+        stimuli_spectro = self.stimuli_baretospectrogram(self.spiking_bins[idx], self.binned_freq, self.binned_amp)
+        spike_history = self.spikes_binned[0, self.spiking_bins[idx] -
+                params['hist_size']:(self.spiking_bins[idx]-1)]
+        stimuli_spectro = torch.tensor(stimuli_spectro, device=self.device)
+        spike_history = torch.tensor(spike_history, device=self.device)
+        eta = torch.tensor(np.random.normal(0, 1, 1), device=self.device)
+        return stimuli_spectro, spike_history, eta, self.spikes_binned[0, self.spiking_bins[idx]]
+
     def binned_spikes(self, params, spiketimes):
         total_time = np.ceil(spiketimes[-1]+1) #s
         binned_spikes = np.zeros((1, int(total_time / params['strf_timebinsize'])))
@@ -38,18 +61,37 @@ class strfestimation():
            stimuli_spectrogram[binned_freq[0, ts]//params['freqbinsize'], idx] = binned_amp[0, ts]
         return stimuli_spectrogram
 
-    def run(self, stimuli_df, spike_df):
-        spiketimes = spike_df['timestamps'].to_numpy() # in seconds
-        total_time = np.ceil(spiketimes[-1]+1) #s
-        samples_per_bin = int(params['samplerate']*params['strf_timebinsize']) #num samples per bin
-        spikes_binned = self.binned_spikes(params, spiketimes)
-        binned_freq, binned_amp = get_stimulifreq_barebone(stimuli_df, total_time, timebin, params['samplerate'])
+class strfestimation(nn.Module):
+    def __init__(self, params):
+        self.params = params
+        self.device = params['device']
+        self.frequency_bins =\
+            int((params['freqrange'][1]-params['freqrange'][0])/params['freqbinsize'])
+        self.time_bins =\
+            int((params['strf_timerange'][1]-params['strf_timerange'][0])/params['strf_timebinsize'])
+        self.strf_params = torch.tensor(np.random.rand((self.frequency_bins,
+            self.time_bins)), requires_grad=True, device = self.device)
+        self.hist_bins = int(params['hist_size']/params['strf_timebinsize'])
+        self.history_filter = torch.tensor(np.random.rand((self.hist_bins, 1)),
+                requires_grad=True, device=self.device)
+        self.bias = torch.randn(1, requires_grad=True, device=self.device)
+        self.optimizer = torch.optim.SGD([self.strf_params, self.history_filter, self.bias],
+                lr=params['lr'])
 
-        # for count, spikebin in enumerate(spikes_binned):
-            # stimuli_spectro = self.stimuli_baretospectrogram(count, binned_freq, binned_amp)
-            # spike_history = spiked_binned[0, count-params['hist_size']:(count-1)]
+    def run(self, dataloader):
+        epochs = params['epochs']
 
-        print("to complete")
+        for e in epochs:
+            for ibatch, batchsample in enumerate(tqdm(dataloader)):
+                self.optimizer.zero_grad()
+                Xin, Yhist, eta, Yt = batchsample
+                linsum = torch.mul(Xin, self.strf_params[None, :,:]) + torch.mul(Yhist,
+                        self.history_filter[None, :]) + self.bias[None, :] + eta
+                linsumexp = torch.exp(linsum)
+                LLh =  Yt*linsum - linsumexp - (Yt+1).lgamma().exp()
+                loss = -1*LLh
+                loss.backward()
+            print("loss at epoch {} = {}".format(e, loss))
 
 def estimate_strf(foldername, dataset_type, params):
     #params
@@ -65,11 +107,17 @@ def estimate_strf(foldername, dataset_type, params):
         stimuli_df, spike_df, raster, raster_full = loaddata_withraster(foldername, sampletimespan,
                 minduration)#fetch raw data
 
+    strf_dataset = strfdataset(params, stimuli_df, spike_df)
+    strf_dataloader = DataLoader(strfdataset, batch_size=params['batchsize'], shuffle=False,
+            num_workers=10)
     strfest = strfestimation(params)
-    strfest.run(stimuli_df, raster_df)
+    strfest.run(strf_dataloader)
 
 
 if(__name__=="__main__"):
+    # torch params
+    device = torch.device('cuda:0')
+
     # prestrf dataset
     foldername = "../data/prestrf_data/ACx_data_{}/ACx{}/"
     datafiles = [1,2,3]
@@ -87,6 +135,10 @@ if(__name__=="__main__"):
     params['freqrange'] = [0, 41000]
     params['freqbinsize'] = 10 #hz/bin -- heuristic/random?
     params['hist_size'] = 0.02 #s = 20ms
+
+    params['device'] = device
+    params['batchsize'] = 32
+    params['epochs'] = 10
 
     # #strf dataset
     # foldername = "../data/strf_data/"
