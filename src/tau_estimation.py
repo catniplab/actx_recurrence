@@ -7,11 +7,12 @@ from scipy.stats import norm, multivariate_normal
 
 from dich_gauss.dichot_gauss import DichotGauss 
 from dich_gauss.optim_dichot_gauss import get_bivargauss_cdf, find_root_bisection
-from dataloader import loaddata_withraster
+from dataloader import loaddata_withraster, get_stimuli_spectrogram
 from dataloader_strf import loaddata_withraster_strf
 from utils import raster_fulltoevents, calculate_meanfiringrate, exponentialClass,\
-    measure_isi, measure_psth, calculate_fanofactor, calculate_coeffvar
-from plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata, plot_rasterpsth
+    measure_isi, measure_psth, calculate_fanofactor, calculate_coeffvar, spectral_resample
+from plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata,\
+    plot_rasterpsth, plot_spectrogram
 
 class dichotomizedgaussian_surrogate():
     def __init__(self, mfr, autocorr, data, delay):
@@ -167,18 +168,17 @@ def testingfunc_onetrial(foldername, dataset_type, params, filename):
     ogest = [a, b, tau]
 
     dichgaussest = None
-    figtitle = figloc+" mfr={} ".format(mfr)+" coeffvar={} ".format(coeffvar)+" mean ISI={} "\
+    figtitle = foldername +" mfr={} ".format(mfr)+" coeffvar={} ".format(coeffvar)+" mean ISI={} "\
         .format(np.mean(isi_list)+" tau est={} ".format(tau))
     return raster, raster_full, isi_list, psth_measure, autocor, mfr, ogest, dichgaussest, figtitle
 
-def estimate_ogtau(foldername, dataset_type):
+def estimate_ogtau(foldername, dataset_type, params):
     #params
-    binsize = 0.02#s = 20ms
-    delayrange = [1, 300]#units
-    samplerate = 10000#samples per second
-    sampletimespan = [0, 1.640]#s
-    minduration = 1.640
-    # sampletimespan *= 10 #100ms time units
+    binsize = params['binsize']#s = 20ms
+    delayrange = params['delayrange']#units
+    samplerate = params['samplerate']#samples per second
+    sampletimespan = params['sampletimespan']
+    minduration = params['minduration']
 
     if(dataset_type == 'strf'):
         stimuli_df, spike_df, raster, raster_full = loaddata_withraster_strf(foldername,
@@ -186,6 +186,8 @@ def estimate_ogtau(foldername, dataset_type):
     else:
         stimuli_df, spike_df, raster, raster_full = loaddata_withraster(foldername, sampletimespan,
                 minduration)#fetch raw data
+        # stimuli_spectrogram = get_stimuli_spectrogram(stimuli_df, samplerate, binsize,
+                # params['freqbin'], params['freqrange'])
 
     # measure isi and psth before resampling
     isi_list, _ = measure_isi(raster)
@@ -194,6 +196,9 @@ def estimate_ogtau(foldername, dataset_type):
 
     # resampling with wider bins and fitting exponential curve to og data
     raster, raster_full = resample(raster, raster_full, binsize, samplerate)#resize bins
+    # stimuli = spectral_resample(stimuli_spectrogram, binsize, samplerate)
+    # locspec='../outputs/spectogram.pdf'
+    # plot_spectrogram(stimuli, locspec)
     # delay = np.linspace(delayrange[0], delayrange[1], 20)
     delay = [i for i in range(delayrange[0], delayrange[1])]#range of delays
     mfr = calculate_meanfiringrate(raster, sampletimespan)#mean firing rate
@@ -233,32 +238,46 @@ def estimate_ogtau(foldername, dataset_type):
     dichgaussest = [a_est, b, np.exp(logunbiasedtau), std_tau]
     print("dich gaus estimates a={}, b={}, tau={}, std={}, bias={}".format(a_est, b,
         np.exp(logunbiasedtau), std_tau, bias))
+    figtitle = foldername + " mfr={} ".format(mfr)+" coeffvar={} ".format(coeffvar)+" mean ISI={} "\
+        .format(np.mean(isi_list))+" tau est={} ".format(tau)
 
-    return raster, raster_full, isi_list, psth_measure, np.asarray(delay)*binsize, autocor, mfr, ogest, dichgaussest
+    return raster, raster_full, isi_list, psth_measure, np.asarray(delay)*binsize, autocor, mfr,\
+            ogest, dichgaussest, figtitle
 
 
 
 if(__name__=="__main__"):
     # prestrf dataset
-    # foldername = "../data/prestrf_data/ACx_data_{}/ACx{}/"
-    # datafiles = [1,2,3]
-    # cortexside = ["Calyx", "Thelo"]
-    # dataset_type = 'prestrf'
-
-    #strf dataset
-    foldername = "../data/strf_data/"
+    foldername = "../data/prestrf_data/ACx_data_{}/ACx{}/"
+    datafiles = [1,2,3]
     cortexside = ["Calyx", "Thelo"]
-    dataset_type = 'strf'
-
+    dataset_type = 'prestrf'
     #params
     params = {}
     params['binsize'] = 0.02#s = 20ms
-    params['delayrange'] = [1, 300]#units
+    params['delayrange'] = [1, 30]#units
     params['samplerate'] = 10000#samples per second
     # sampletimespan = [0, 1.640]#s
     params['sampletimespan'] = [100, 300]
     params['minduration'] = 1.640
+    params['freqrange'] = [0, 45000]
+    params['freqbin'] = 10 #heuristic/random?
     # sampletimespan *= 10 #100ms time units
+
+    # #strf dataset
+    # foldername = "../data/strf_data/"
+    # cortexside = ["Calyx", "Thelo"]
+    # dataset_type = 'strf'
+
+    # #params
+    # params = {}
+    # params['binsize'] = 0.02#s = 20ms
+    # params['delayrange'] = [1, 300]#units
+    # params['samplerate'] = 10000#samples per second
+    # # sampletimespan = [0, 1.640]#s
+    # params['sampletimespan'] = [100, 300]
+    # params['minduration'] = 1.640
+    # # sampletimespan *= 10 #100ms time units
 
     ## single datafile test
     # foldername = "../data/prestrf_data/ACx_data_1/ACxCalyx/20170909-010/"
@@ -306,13 +325,13 @@ if(__name__=="__main__"):
     for count, dfs in enumerate(datafiles['folderloc']):
         figloc = "../outputs/{}.pdf".format(datafiles['filenames'][count])
         print("dfs", dfs)
-        # raster, raster_full, isi_list, psth_measure, autocor, mfr, ogest, dichgaussest =\
-        # estimate_ogtau(dfs, dataset_type, params)
-        raster, raster_full, isi_list, psth_measure, autocor, mfr, ogest, dichgaussest,\
-            figtitle = testingfunc_onetrial(dfs, dataset_type, params, datafiles['filenames'][count])
-        # mfrs.append(mfr)
-        # dichgaussests.append(dichgaussest)
-        # labels.append(datafiles['label'][count])
+        raster, raster_full, isi_list, psth_measure, autocor, mfr, ogest, dichgaussest, figtitle =\
+            estimate_ogtau(dfs, dataset_type, params)
+        # raster, raster_full, isi_list, psth_measure, autocor, mfr, ogest, dichgaussest,\
+            # figtitle = testingfunc_onetrial(dfs, dataset_type, params, datafiles['filenames'][count])
+        mfrs.append(mfr)
+        dichgaussests.append(dichgaussest)
+        labels.append(datafiles['label'][count])
         # figtitle = foldername
         plot_neuronsummary(autocor, params, raster, isi_list, psth_measure, ogest, dichgaussest,\
                 figtitle, figloc)

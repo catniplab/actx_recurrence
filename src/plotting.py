@@ -7,6 +7,13 @@ import seaborn
 
 from utils import exponentialClass
 
+def plot_spectrogram(spectrogram, figloc):
+    plt.pcolormesh(np.transpose(spectrogram))
+    plt.xlabel('time')
+    plt.ylabel('frequency')
+    plt.savefig(figloc)
+    plt.close()
+
 def plot_autocor(autocor, delay, a, b, tau):
     exc_int = exponentialClass()
     exc_int.b = b
@@ -140,3 +147,14 @@ def plot_histdata(data):
     plt.hist(data, bins=50)
     plt.show()
 
+def multichannel_waveform_plot(recordings):
+    fig, ax = plt.subplots(5,5)
+    toshow = random.sample(range(len(recordings)), 25)
+    for i in range(5):
+        for j in range(5):
+            y = recordings[i*5 + j]
+            x = [i for i in range(len(y))]
+            ax[i,j].plot(x, y)
+            # ax[i,j].xlabel("timestamp")
+            # ax[i,j].ylabel("voltage")
+    plt.show()

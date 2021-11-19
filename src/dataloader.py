@@ -26,7 +26,7 @@ def load_data(foldername):
             stimuli_param['amplitude'] = stimuli_raw_data[i][0]['param']['amplitude'][0][0][0][0]
             stimuli_param['ramp'] = stimuli_raw_data[i][0]['param']['ramp'][0][0][0][0]
             stimuli_param['duration'] = stimuli_raw_data[i][0]['param']['duration'][0][0][0][0]
-        if(stimuli_raw_data[i]['type'][0][0] == 'whitenoise'):
+        elif(stimuli_raw_data[i]['type'][0][0] == 'whitenoise'):
             stimuli_param = {'amplitude':[], 'ramp':[], 'duration':[]}
             stimuli_param['amplitude'] = stimuli_raw_data[i][0]['param']['amplitude'][0][0][0][0]
             stimuli_param['ramp'] = stimuli_raw_data[i][0]['param']['ramp'][0][0][0][0]
@@ -83,18 +83,6 @@ def load_data(foldername):
 
     return stimuli_df, spike_data_df
 
-def multichannel_waveform_plot(recordings):
-    fig, ax = plt.subplots(5,5)
-    toshow = random.sample(range(len(recordings)), 25)
-
-    for i in range(5):
-        for j in range(5):
-            y = recordings[i*5 + j]
-            x = [i for i in range(len(y))]
-            ax[i,j].plot(x, y)
-            # ax[i,j].xlabel("timestamp")
-            # ax[i,j].ylabel("voltage")
-    plt.show()
 
 
 def sort_eventraster(stimuli_df, spikes_df, rng):
@@ -142,11 +130,11 @@ def sort_eventraster(stimuli_df, spikes_df, rng):
     # print(np.sum(raster[30,:]))
     return raster, raster_full
 
-def get_eventraster(stimuli_df, spikes_df, rng, minduration=1.640):
+def get_eventraster(stimuli_df, spikes_df, rng, minduration=1.640, sample_rate = 10000):
     # for each stimuli check for a 1640ms open gap
     # if open gap then take the spikes in that time frame
     # pass each such open time frame as one trial
-    sample_rate = 10000
+    sample_rate = sample_rate
     numstimulis = stimuli_df.size
     triggertimes = []
 
@@ -184,6 +172,50 @@ def get_eventraster(stimuli_df, spikes_df, rng, minduration=1.640):
 
     raster = np.asarray(raster)
     return raster, raster_full
+
+def get_stimulifreq_barebone(stimuli_df, total_time, timebin=0.001, samplerate): #timebin in s
+    numstimulis = stimuli_df.size
+    stimuli_bare_freq = np.zeros((1, int(total_time*samplerate)))
+    stimuli_bare_amp = np.zeros((1, int(total_time*samplerate)))
+    for i in range(numstimulis):
+        stim_i = stimuli_df.iloc[i]
+        stim_i_params = stimuli_df.iloc[i]['param']
+        stim_i_start = int(stim_i['trigger']*sample_rate)
+        if(stim_i_start>total_time*sample_rate):
+            break
+        stim_i_length = int(stim_i_params['duration']*(sample_rate/1000)) #ms->s->samplenum
+        for j in range(stim_i_length):
+            if(stim_i['type']=='tone'):
+                freq_i = stim_i['param']['frequency']
+                amp_i = stim_i_params['amplitude']
+                # spectrogram_full[stim_i_start+j, freq_i] = amp_i
+                stimuli_bare_freq[0, stim_i_start+j] = freq_i
+                stimuli_bare_amp[0, stim_i_start+j] = amp_i
+            elif(stim_i['type']=='fmsweep'):
+                start_freq_i = stim_i_params['start_frequency']
+                stop_freq_i = stim_i_params['stop_frequency']
+                if(start_freq_i<stop_freq_i):
+                    freq_speed = stim_i_params['speed'] # octaves per sec
+                else:
+                    freq_speed = -1*stim_i_params['speed'] # octaves per sec
+                amp_i = stim_i_params['amplitude']
+                freq_j = int(start_freq_i*(2**(freq_speed*(j/sample_rate))))
+                stimuli_bare_freq[0, stim_i_start+j] = freq_j
+                stimuli_bare_amp[0, stim_i_start+j] = amp_i
+            elif(stim_i['type']=='whitenoise'):
+                amp_i = stim_i_params['amplitude']
+                rand_freq = np.random.uniform(0, 1, (1,1))
+                stimuli_bare_freq[0, stim_i_start+j] = rand_freq
+                stimuli_bare_amp[0, stim_i_start+j] = amp_i
+
+    binsize = int(timebin*samplerate)
+    binned_stimuli_bare_freq = np.zeros((1, int(total_time*samplerate)/binsize))
+    binned_stimuli_bare_amp = np.zeros((1, int(total_time*samplerate)/binsize))
+    for bn in range(int(total_time*samplerate)/binsize):
+        binned_stimuli_bare_freq[0, bn] = mean(stimuli_bare_freq[0, bn*binsize:(bn+1)*binsize])
+        binned_stimuli_bare_amp[0, bn] = mean(stimuli_bare_amp[0, bn*binsize:(bn+1)*binsize])
+
+    return binned_stimuli_bare_freq, binned_stimuli_bare_amp
 
 def loaddata_withraster(foldername, rng, minduration):
     stimuli_df, spike_df = load_data(foldername)

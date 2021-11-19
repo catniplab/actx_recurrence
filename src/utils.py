@@ -7,6 +7,15 @@ from dich_gauss.dichot_gauss import DichotGauss
 from dich_gauss.optim_dichot_gauss import get_bivargauss_cdf, find_root_bisection
 import matplotlib.pyplot as plt
 
+def spectral_resample(stimuli_spectrogram, time_bin, samplerate):
+    time_bin_n = int(time_bin*samplerate) 
+    num_bins = stimuli_spectrogram.shape[1]//time_bin_n
+    stimuli_resampled = np.zeros((stimuli_spectrogram.shape[0],
+        int(stimuli_spectrogram.shape[1]/time_bin_n)))
+    for i in range(num_bins): 
+        stimuli_resampled[:, i] = np.mean(stimuli_spectrogram[:, i*time_bin_n:(i+1)*time_bin_n], 1)
+    return stimuli_resampled
+
 def raster_fulltoevents(raster_full, samplerate, sampletimespan):
     raster = []
     for i in range(raster_full.shape[0]):
