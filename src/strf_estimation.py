@@ -12,7 +12,7 @@ from dataloader import load_data, get_eventraster, get_stimulifreq_barebone
 from dataloader_strf import loaddata_withraster_strf
 from utils import raster_fulltoevents, exponentialClass, spectral_resample
 from plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata,\
-    plot_rasterpsth, plot_spectrogram
+    plot_rasterpsth, plot_spectrogram, plot_strf
 
 class strfdataset(Dataset):
     def __init__(self, params, stimuli_df, spikes_df):
@@ -93,7 +93,12 @@ class strfestimation(nn.Module):
                 loss.backward()
             print("loss at epoch {} = {}".format(e, loss))
 
-def estimate_strf(foldername, dataset_type, params):
+    def plotstrf(self, figloc):
+        plot_strf(self.strf_params.detach().cpu().numpy(),
+                self.history_filter.detach().cpu().numpy(), figloc)
+
+
+def estimate_strf(foldername, dataset_type, params,  figloc):
     #params
     binsize = params['binsize']#s = 20ms
     delayrange = params['delayrange']#units
@@ -112,6 +117,7 @@ def estimate_strf(foldername, dataset_type, params):
             num_workers=10)
     strfest = strfestimation(params)
     strfest.run(strf_dataloader)
+    strfest.plotstrf(figloc)
 
 
 if(__name__=="__main__"):
@@ -196,6 +202,6 @@ if(__name__=="__main__"):
         print("dfs", dfs)
         labels.append(datafiles['label'][count])
         # figtitle = foldername
-        estimate_strf()
+        estimate_strf(dfs, dataset_type, params, figloc)
         print("label: ", datafiles['label'][count])
     

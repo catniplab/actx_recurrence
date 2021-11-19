@@ -7,6 +7,20 @@ import seaborn
 
 from utils import exponentialClass
 
+def plot_strf(strfweights, historyweights, figloc):
+    fig, ax = plt.subplots(1, 2, figsize=(20, 10))
+    ax[0].imshow(np.flip(strfweights, 0), interpolation='none')
+    ax[0].set_xlabel('lag')
+    ax[0].set_ylabel('frequncy bin')
+
+    ## plot history weights
+    ax[1].plot(np.flip(historyweights,0))
+    ax[1].set_xlabel('lag')
+    ax[1].set_ylabel('amplitude')
+
+    plt.savefig(figloc, bbox_inches='tight')
+    plt.close()
+
 def plot_spectrogram(spectrogram, figloc):
     plt.pcolormesh(np.transpose(spectrogram))
     plt.xlabel('time')
