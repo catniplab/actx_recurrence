@@ -20,24 +20,26 @@ class strfdataset(Dataset):
         self.device = params['device']
         self.spikes_df = spikes_df
         self.stimuli_df = stimuli_df
+        self.hist_bins = int(params['hist_size']/params['strf_timebinsize'])
         spiketimes = spikes_df['timestamps'].to_numpy() # in seconds
         total_time = np.ceil(spiketimes[-1]+1) #s
         samples_per_bin = int(params['samplerate']*params['strf_timebinsize']) #num samples per bin
         self.spikes_binned = torch.tensor(self.binned_spikes(params, spiketimes),
                 device=self.device)
         self.binned_freq, self.binned_amp = get_stimulifreq_barebone(stimuli_df, total_time,\
-                params['strf_timebinsize'], params['samplerate'], params['freqrange'])
+                params['strf_timebinsize'], params['samplerate'], params['freqrange'],\
+                params['max_amp'])
         self.binned_freq = torch.tensor(self.binned_freq, device=self.device)
         self.binned_amp = torch.tensor(self.binned_amp, device=self.device)
-        self.spiking_bins = torch.nonzero(self.spikes_binned)
+        self.spiking_bins = torch.nonzero(self.spikes_binned)[:,1]
 
     def __len__(self):
         return self.spiking_bins.shape[0]
 
     def __getitem__(self, idx):
-        stimuli_spectro = self.stimuli_baretospectrogram(self.spiking_bins[idx], self.binned_freq, self.binned_amp)
-        spike_history = self.spikes_binned[0, self.spiking_bins[idx] -
-                params['hist_size']:(self.spiking_bins[idx]-1)]
+        stimuli_spectro = self.stimuli_baretospectrogram(int(self.spiking_bins[idx]), self.binned_freq, self.binned_amp)
+        spike_history = self.spikes_binned[0, int(self.spiking_bins[idx] -\
+            self.hist_bins-1):int(self.spiking_bins[idx]-1)]
         stimuli_spectro = torch.tensor(stimuli_spectro, device=self.device)
         spike_history = torch.tensor(spike_history, device=self.device)
         eta = torch.tensor(np.random.normal(0, 1, 1), device=self.device)
@@ -58,7 +60,8 @@ class strfdataset(Dataset):
         timeslice = range(spikebin-1-num_timebins, spikebin-1)
 
         for idx, ts in enumerate(timeslice):
-           stimuli_spectrogram[binned_freq[0, ts]//params['freqbinsize'], idx] = binned_amp[0, ts]
+            # print("freq bin size", params['freqbinsize'], "binner freq", binned_freq[0, ts])
+            stimuli_spectrogram[int(binned_freq[0, ts]//params['freqbinsize']), idx] = binned_amp[0, ts]
         return stimuli_spectrogram
 
 class strfestimation():
@@ -72,10 +75,10 @@ class strfestimation():
         self.strf_params = torch.tensor(np.random.uniform(size=(self.frequency_bins,
             self.time_bins)), requires_grad=True, device = self.device)
         self.hist_bins = int(params['hist_size']/params['strf_timebinsize'])
-        self.history_filter = torch.tensor(np.random.uniform(size=(self.hist_bins, 1)),
+        self.history_filter = torch.tensor(np.random.uniform(size=(1, self.hist_bins)),
                 requires_grad=True, device=self.device)
         self.bias = torch.randn(1, requires_grad=True, device=self.device)
-        self.optimizer = torch.optim.SGD([self.strf_params, self.history_filter, self.bias],
+        self.optimizer = torch.optim.LBFGS([self.strf_params, self.history_filter, self.bias],
                 lr=params['lr'])
 
     def run(self, dataloader):
@@ -83,14 +86,24 @@ class strfestimation():
 
         for e in range(epochs):
             print("Epoch: ", e)
-            for ibatch, batchsample in enumerate(tqdm(dataloader)):
+            for ibatch, batchsample in tqdm(enumerate(dataloader)):
                 self.optimizer.zero_grad()
                 Xin, Yhist, eta, Yt = batchsample
-                linsum = torch.mul(Xin, self.strf_params[None, :,:]) + torch.mul(Yhist,
-                        self.history_filter[None, :]) + self.bias[None, :] + eta
+                temp = torch.nn.functional.conv2d(Xin.unsqueeze(1),
+                        self.strf_params.unsqueeze(0).unsqueeze(1), bias=None) 
+                # print("term1:", temp)
+                temp2 = torch.conv1d(Yhist.unsqueeze(1),\
+                        self.history_filter.unsqueeze(0), bias=None)
+                linsum = torch.nn.functional.conv2d(Xin.unsqueeze(1),\
+                    self.strf_params.unsqueeze(0).unsqueeze(1), bias=None) +\
+                    torch.conv1d(Yhist.unsqueeze(1), self.history_filter.unsqueeze(0),\
+                    bias=None) + eta + self.bias[None, :]
+                # linsum = torch.mul(Xin, self.strf_params[None, :,:]) + torch.mul(Yhist,\
+                        # self.history_filter[None, :, 0]) + self.bias[None, :] + eta
                 linsumexp = torch.exp(linsum)
+                # print("linsumexp", linsumexp)
                 LLh =  Yt*linsum - linsumexp - (Yt+1).lgamma().exp()
-                loss = -1*LLh
+                loss = torch.sum(-1*LLh)
                 loss.backward()
             print("loss at epoch {} = {}".format(e, loss))
 
@@ -113,8 +126,8 @@ def estimate_strf(foldername, dataset_type, params,  figloc):
         stimuli_df, spikes_df= load_data(foldername)#fetch raw data
 
     strf_dataset = strfdataset(params, stimuli_df, spikes_df)
-    strf_dataloader = DataLoader(strfdataset, batch_size=params['batchsize'], shuffle=False,
-            num_workers=10)
+    strf_dataloader = DataLoader(strf_dataset, batch_size=params['batchsize'], shuffle=False,
+            num_workers=0)
     strfest = strfestimation(params)
     strfest.run(strf_dataloader)
     strfest.plotstrf(figloc)
@@ -141,8 +154,9 @@ if(__name__=="__main__"):
     params['freqrange'] = [0, 41000]
     params['freqbinsize'] = 10 #hz/bin -- heuristic/random?
     params['hist_size'] = 0.02 #s = 20ms
+    params['max_amp'] = 100 #db
 
-    params['lr'] = 0.001
+    params['lr'] = 1
     params['device'] = device
     params['batchsize'] = 32
     params['epochs'] = 10
