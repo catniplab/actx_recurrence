@@ -3,6 +3,7 @@ import matplotlib.pyplot as plt
 import os
 import scipy
 from tqdm import tqdm
+import h5py
 
 import torch
 import torch.nn as nn
@@ -10,7 +11,7 @@ from torch.utils.data import Dataset, DataLoader
 
 from dataloader import load_data, get_eventraster, get_stimulifreq_barebone
 from dataloader_strf import loaddata_withraster_strf
-from utils import raster_fulltoevents, exponentialClass, spectral_resample
+from utils import raster_fulltoevents, exponentialClass, spectral_resample, numpify
 from plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata,\
     plot_rasterpsth, plot_spectrogram, plot_strf
 
@@ -105,14 +106,24 @@ class strfestimation():
                 LLh =  Yt*linsum - linsumexp - (Yt+1).lgamma().exp()
                 loss = torch.sum(-1*LLh)
                 loss.backward()
-            print("loss at epoch {} = {}".format(e, loss))
+            print("loss at epoch {} = {}; bias = {}".format(e, loss, numpify(self.bias)))
 
     def plotstrf(self, figloc):
-        plot_strf(self.strf_params.detach().cpu().numpy(),
-                self.history_filter.detach().cpu().numpy(), figloc)
+        timebins = [i*self.params['strf_timebinsize']*1000 for i in range(self.time_bins)]
+        freqbins = [(i/4000)*self.params['freqbinsize'] for i in range(self.frequency_bins)]
+        # print(timebins, freqbins)
+        print("bias: ", numpify(self.bias))
+        plot_strf(numpify(self.strf_params),
+                numpify(self.history_filter), timebins, freqbins, figloc)
+
+    def save_weights(self, loc):
+       with h5py.File(loc, 'w') as h5f :
+           h5f.create_dataset('strf_weights', data = numpify(self.strf_params))
+           h5f.create_dataset('hist_weights', data= numpify(self.history_filter))
+           h5f.create_dataset('bias', data = numpify(self.bias))
 
 
-def estimate_strf(foldername, dataset_type, params,  figloc):
+def estimate_strf(foldername, dataset_type, params,  figloc, saveloc):
     #params
     binsize = params['binsize']#s = 20ms
     delayrange = params['delayrange']#units
@@ -131,6 +142,7 @@ def estimate_strf(foldername, dataset_type, params,  figloc):
     strfest = strfestimation(params)
     strfest.run(strf_dataloader)
     strfest.plotstrf(figloc)
+    strfest.save_weights(saveloc)
 
 
 if(__name__=="__main__"):
@@ -159,7 +171,7 @@ if(__name__=="__main__"):
     params['lr'] = 1
     params['device'] = device
     params['batchsize'] = 32
-    params['epochs'] = 10
+    params['epochs'] = 15
 
     # #strf dataset
     # foldername = "../data/strf_data/"
@@ -214,9 +226,10 @@ if(__name__=="__main__"):
 
     for count, dfs in enumerate(datafiles['folderloc']):
         figloc = "../outputs/strf_{}.pdf".format(datafiles['filenames'][count])
+        saveloc = "../checkpoints/weights_{}.h5".format(datafiles['filenames'][count])
         print("dfs", dfs)
         labels.append(datafiles['label'][count])
         # figtitle = foldername
-        estimate_strf(dfs, dataset_type, params, figloc)
+        estimate_strf(dfs, dataset_type, params, figloc, saveloc)
         print("label: ", datafiles['label'][count])
     

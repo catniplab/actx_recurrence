@@ -7,14 +7,18 @@ import seaborn
 
 from utils import exponentialClass
 
-def plot_strf(strfweights, historyweights, figloc):
-    fig, ax = plt.subplots(1, 2, figsize=(20, 10))
-    ax[0].imshow(np.flip(strfweights, 0), interpolation='none')
+def plot_strf(strfweights, historyweights, timebinst, freqbins, figloc):
+    fig, ax = plt.subplots(2, 1, figsize=(20, 10))
+    print(strfweights.shape)
+    # ax[0].imshow(np.flip(strfweights, 1), cmap='hot', interpolation='none')
+    ax[0].pcolormesh(timebinst, freqbins, strfweights, cmap='hot')
     ax[0].set_xlabel('lag')
     ax[0].set_ylabel('frequncy bin')
 
     ## plot history weights
-    ax[1].plot(np.flip(historyweights,0))
+    # print(historyweights.shape)
+    # print(np.flip(historyweights, 0))
+    ax[1].plot(np.flip(historyweights,0)[0], 'go--')
     ax[1].set_xlabel('lag')
     ax[1].set_ylabel('amplitude')
 

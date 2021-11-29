@@ -7,6 +7,9 @@ from dich_gauss.dichot_gauss import DichotGauss
 from dich_gauss.optim_dichot_gauss import get_bivargauss_cdf, find_root_bisection
 import matplotlib.pyplot as plt
 
+def numpify(tensor):
+    return tensor.cpu().detach().numpy()
+
 def spectral_resample(stimuli_spectrogram, time_bin, samplerate):
     time_bin_n = int(time_bin*samplerate) 
     num_bins = stimuli_spectrogram.shape[1]//time_bin_n
