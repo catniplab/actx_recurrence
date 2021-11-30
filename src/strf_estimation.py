@@ -73,10 +73,10 @@ class strfestimation():
             int((params['freqrange'][1]-params['freqrange'][0])/params['freqbinsize'])
         self.time_bins =\
             int((params['strf_timerange'][1]-params['strf_timerange'][0])/params['strf_timebinsize'])
-        self.strf_params = torch.tensor(np.random.uniform(size=(self.frequency_bins,
+        self.strf_params = torch.tensor(np.random.normal(size=(self.frequency_bins,
             self.time_bins)), requires_grad=True, device = self.device)
         self.hist_bins = int(params['hist_size']/params['strf_timebinsize'])
-        self.history_filter = torch.tensor(np.random.uniform(size=(1, self.hist_bins)),
+        self.history_filter = torch.tensor(np.random.normal(size=(1, self.hist_bins)),
                 requires_grad=True, device=self.device)
         self.bias = torch.randn(1, requires_grad=True, device=self.device)
         self.optimizer = torch.optim.LBFGS([self.strf_params, self.history_filter, self.bias],
@@ -89,6 +89,7 @@ class strfestimation():
             print("Epoch: ", e)
             for ibatch, batchsample in tqdm(enumerate(dataloader)):
 
+                # loss =None
                 def closure():
                     self.optimizer.zero_grad()
                     Xin, Yhist, eta, Yt = batchsample
@@ -99,18 +100,23 @@ class strfestimation():
                             # self.history_filter.unsqueeze(0), bias=None)
                     linsum = torch.nn.functional.conv2d(Xin.unsqueeze(1),\
                         self.strf_params.unsqueeze(0).unsqueeze(1), bias=None) +\
-                        torch.conv1d(Yhist.unsqueeze(1), self.history_filter.unsqueeze(0),\
+                        torch.nn.functional.conv1d(Yhist.unsqueeze(1), self.history_filter.unsqueeze(0),\
                         bias=None) + eta + self.bias[None, :]
                     # linsum = torch.mul(Xin, self.strf_params[None, :,:]) + torch.mul(Yhist,\
                             # self.history_filter[None, :, 0]) + self.bias[None, :] + eta
+                    # print("linsum:", linsum)
                     linsumexp = torch.exp(linsum)
                     # print("linsumexp", linsumexp)
                     LLh =  Yt*linsum - linsumexp - (Yt+1).lgamma().exp()
-                    loss = torch.sum(-1*LLh)
+                    print("LLH:", LLh)
+                    loss = torch.mean(-1*LLh)
+                    print("loss before:", loss)
+                    print("strf weights:", self.strf_params, self.bias)
                     loss.backward()
                     return loss
 
-                self.optimizer.step(closure)
+                loss = self.optimizer.step(closure)
+                print("loss after:", loss)
 
             print("loss at epoch {} = {}; bias = {}".format(e, loss, numpify(self.bias)))
 
@@ -144,7 +150,7 @@ def estimate_strf(foldername, dataset_type, params,  figloc, saveloc):
 
     strf_dataset = strfdataset(params, stimuli_df, spikes_df)
     strf_dataloader = DataLoader(strf_dataset, batch_size=params['batchsize'], shuffle=False,
-            num_workers=0)
+            num_workers=3)
     strfest = strfestimation(params)
     strfest.run(strf_dataloader)
     strfest.plotstrf(figloc)
@@ -177,7 +183,7 @@ if(__name__=="__main__"):
     params['lr'] = 1
     params['device'] = device
     params['batchsize'] = 32
-    params['epochs'] = 15
+    params['epochs'] = 2
 
     # #strf dataset
     # foldername = "../data/strf_data/"
