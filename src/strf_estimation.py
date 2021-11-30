@@ -88,24 +88,30 @@ class strfestimation():
         for e in range(epochs):
             print("Epoch: ", e)
             for ibatch, batchsample in tqdm(enumerate(dataloader)):
-                self.optimizer.zero_grad()
-                Xin, Yhist, eta, Yt = batchsample
-                temp = torch.nn.functional.conv2d(Xin.unsqueeze(1),
-                        self.strf_params.unsqueeze(0).unsqueeze(1), bias=None) 
-                # print("term1:", temp)
-                temp2 = torch.conv1d(Yhist.unsqueeze(1),\
-                        self.history_filter.unsqueeze(0), bias=None)
-                linsum = torch.nn.functional.conv2d(Xin.unsqueeze(1),\
-                    self.strf_params.unsqueeze(0).unsqueeze(1), bias=None) +\
-                    torch.conv1d(Yhist.unsqueeze(1), self.history_filter.unsqueeze(0),\
-                    bias=None) + eta + self.bias[None, :]
-                # linsum = torch.mul(Xin, self.strf_params[None, :,:]) + torch.mul(Yhist,\
-                        # self.history_filter[None, :, 0]) + self.bias[None, :] + eta
-                linsumexp = torch.exp(linsum)
-                # print("linsumexp", linsumexp)
-                LLh =  Yt*linsum - linsumexp - (Yt+1).lgamma().exp()
-                loss = torch.sum(-1*LLh)
-                loss.backward()
+
+                def closure():
+                    self.optimizer.zero_grad()
+                    Xin, Yhist, eta, Yt = batchsample
+                    # temp = torch.nn.functional.conv2d(Xin.unsqueeze(1),
+                            # self.strf_params.unsqueeze(0).unsqueeze(1), bias=None) 
+                    # print("term1:", temp)
+                    # temp2 = torch.conv1d(Yhist.unsqueeze(1),\
+                            # self.history_filter.unsqueeze(0), bias=None)
+                    linsum = torch.nn.functional.conv2d(Xin.unsqueeze(1),\
+                        self.strf_params.unsqueeze(0).unsqueeze(1), bias=None) +\
+                        torch.conv1d(Yhist.unsqueeze(1), self.history_filter.unsqueeze(0),\
+                        bias=None) + eta + self.bias[None, :]
+                    # linsum = torch.mul(Xin, self.strf_params[None, :,:]) + torch.mul(Yhist,\
+                            # self.history_filter[None, :, 0]) + self.bias[None, :] + eta
+                    linsumexp = torch.exp(linsum)
+                    # print("linsumexp", linsumexp)
+                    LLh =  Yt*linsum - linsumexp - (Yt+1).lgamma().exp()
+                    loss = torch.sum(-1*LLh)
+                    loss.backward()
+                    return loss
+
+                self.optimizer.step(closure)
+
             print("loss at epoch {} = {}; bias = {}".format(e, loss, numpify(self.bias)))
 
     def plotstrf(self, figloc):
