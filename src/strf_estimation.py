@@ -8,6 +8,7 @@ import h5py
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
+from pytorch_minimize.optim import MinimizeWrapper
 
 from dataloader import load_data, get_eventraster, get_stimulifreq_barebone
 from dataloader_strf import loaddata_withraster_strf
@@ -27,12 +28,15 @@ class strfdataset(Dataset):
         samples_per_bin = int(params['samplerate']*params['strf_timebinsize']) #num samples per bin
         self.spikes_binned = torch.tensor(self.binned_spikes(params, spiketimes),
                 device=self.device)
+        print("spike binned: ", self.spikes_binned.shape)
         self.binned_freq, self.binned_amp = get_stimulifreq_barebone(stimuli_df, total_time,\
                 params['strf_timebinsize'], params['samplerate'], params['freqrange'],\
                 params['max_amp'])
         self.binned_freq = torch.tensor(self.binned_freq, device=self.device)
         self.binned_amp = torch.tensor(self.binned_amp, device=self.device)
-        self.spiking_bins = torch.nonzero(self.spikes_binned)[:,1]
+        self.spiking_bins = torch.tensor([i for i in range(self.hist_bins+1,\
+            self.spikes_binned.shape[1])], device = self.device)
+        # self.spiking_bins = torch.nonzero(self.spikes_binned)[:,1]
 
     def __len__(self):
         return self.spiking_bins.shape[0]
@@ -44,7 +48,8 @@ class strfdataset(Dataset):
         stimuli_spectro = torch.tensor(stimuli_spectro, device=self.device)
         spike_history = torch.tensor(spike_history, device=self.device)
         eta = torch.tensor(np.random.normal(0, 1, 1), device=self.device)
-        return stimuli_spectro, spike_history, eta, self.spikes_binned[0, self.spiking_bins[idx]]
+        return stimuli_spectro.type(torch.float32), spike_history.type(torch.float32), eta,\
+            self.spikes_binned[0, self.spiking_bins[idx]].type(torch.float32)
 
     def binned_spikes(self, params, spiketimes):
         total_time = np.ceil(spiketimes[-1]+1) #s
@@ -74,13 +79,14 @@ class strfestimation():
         self.time_bins =\
             int((params['strf_timerange'][1]-params['strf_timerange'][0])/params['strf_timebinsize'])
         self.strf_params = torch.tensor(np.random.normal(size=(self.frequency_bins,
-            self.time_bins)), requires_grad=True, device = self.device)
+            self.time_bins)), requires_grad=True, device = self.device, dtype=torch.float32)
         self.hist_bins = int(params['hist_size']/params['strf_timebinsize'])
         self.history_filter = torch.tensor(np.random.normal(size=(1, self.hist_bins)),
-                requires_grad=True, device=self.device)
+                requires_grad=True, device=self.device, dtype=torch.float32)
         self.bias = torch.randn(1, requires_grad=True, device=self.device)
-        self.optimizer = torch.optim.LBFGS([self.strf_params, self.history_filter, self.bias],
-                lr=params['lr'])
+        # self.optimizer = torch.optim.LBFGS([self.strf_params, self.history_filter, self.bias], lr=params['lr'])
+        minimizer_args = dict(method='Newton-CG', options={'disp':True, 'maxiter':10})
+        self.optimizer = MinimizeWrapper([self.strf_params, self.history_filter, self.bias], minimizer_args)
 
     def run(self, dataloader):
         epochs = params['epochs']
@@ -89,36 +95,47 @@ class strfestimation():
             print("Epoch: ", e)
             for ibatch, batchsample in tqdm(enumerate(dataloader)):
 
-                # loss =None
                 def closure():
                     self.optimizer.zero_grad()
                     Xin, Yhist, eta, Yt = batchsample
-                    # temp = torch.nn.functional.conv2d(Xin.unsqueeze(1),
-                            # self.strf_params.unsqueeze(0).unsqueeze(1), bias=None) 
-                    # print("term1:", temp)
-                    # temp2 = torch.conv1d(Yhist.unsqueeze(1),\
-                            # self.history_filter.unsqueeze(0), bias=None)
-                    linsum = torch.nn.functional.conv2d(Xin.unsqueeze(1),\
-                        self.strf_params.unsqueeze(0).unsqueeze(1), bias=None) +\
-                        torch.nn.functional.conv1d(Yhist.unsqueeze(1), self.history_filter.unsqueeze(0),\
-                        bias=None) + eta + self.bias[None, :]
+                    temp = torch.nn.functional.conv2d(Xin.unsqueeze(1),
+                            self.strf_params.unsqueeze(0).unsqueeze(1), bias=None) 
+                    temp2 = torch.nn.functional.conv1d(Yhist.unsqueeze(1),\
+                            self.history_filter.unsqueeze(0), bias=None)
+                    linsum = torch.squeeze(torch.nn.functional.conv2d(Xin.unsqueeze(1),\
+                        self.strf_params.unsqueeze(0).unsqueeze(1), bias=None)) +\
+                        torch.squeeze(torch.nn.functional.conv1d(Yhist.unsqueeze(1), self.history_filter.unsqueeze(0),\
+                        bias=None)) +  self.bias[None, :] # + eta 
+                    
                     # linsum = torch.mul(Xin, self.strf_params[None, :,:]) + torch.mul(Yhist,\
                             # self.history_filter[None, :, 0]) + self.bias[None, :] + eta
                     # print("linsum:", linsum)
                     linsumexp = torch.exp(linsum)
+                    # print("is there inf in linsum exp? : ", torch.isinf(linsumexp).any())
+                    if(torch.isinf(linsumexp).any()):
+                        print("linsum :", linsum, linsum.shape)
+                        print("limsumexp: ", linsumexp, linsumexp.shape)
+                        print("temp1: ", temp, temp.shape)
+                        print("temp2: ", temp2, temp2.shape)
+                        # print("History: ", Yhist, Yhist.shape)
+
                     # print("linsumexp", linsumexp)
-                    LLh =  Yt*linsum - linsumexp - (Yt+1).lgamma().exp()
-                    print("LLH:", LLh)
+                    LLh = Yt*linsum - linsumexp #- (Yt+1).lgamma().exp()
+                    # print("llh non reg: ", LLh)
+                    LLh += self.params['strf_reg']*torch.norm(self.strf_params, p=2)
+                    LLh += self.params['history_reg']*torch.norm(self.history_filter, p=2)
+                    # print("LLH:", LLh)
                     loss = torch.mean(-1*LLh)
-                    print("loss before:", loss)
-                    print("strf weights:", self.strf_params, self.bias)
+                    # print("loss before:", loss)
+                    # print("strf weights:", self.strf_params, self.bias)
                     loss.backward()
                     return loss
 
                 loss = self.optimizer.step(closure)
-                print("loss after:", loss)
+                # print("is there nan in strf weights? : ", torch.isnan(self.strf_params).any())
+                # print("loss after:", loss)
 
-            print("loss at epoch {} = {}; bias = {}".format(e, loss, numpify(self.bias)))
+            # print("loss at epoch {} = {}; bias = {}".format(e, loss, numpify(self.bias)))
 
     def plotstrf(self, figloc):
         timebins = [i*self.params['strf_timebinsize']*1000 for i in range(self.time_bins)]
@@ -183,7 +200,11 @@ if(__name__=="__main__"):
     params['lr'] = 1
     params['device'] = device
     params['batchsize'] = 32
-    params['epochs'] = 2
+    params['epochs'] = 1
+
+    #regularization params
+    params['history_reg'] = 0.001
+    params['strf_reg'] = 0.01
 
     # #strf dataset
     # foldername = "../data/strf_data/"
