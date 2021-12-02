@@ -2,7 +2,7 @@
 data/*
 !data/*.m
 outputs/*
-#checkpoints/*
+checkpoints/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
