@@ -22,6 +22,7 @@ class strfdataset(Dataset):
         self.device = params['device']
         self.spikes_df = spikes_df
         self.stimuli_df = stimuli_df
+        self.strf_bins = int(self.params['strf_timerange'][1]/self.params['strf_timebinsize'])
         self.hist_bins = int(params['hist_size']/params['strf_timebinsize'])
         spiketimes = spikes_df['timestamps'].to_numpy() # in seconds
         total_time = np.ceil(spiketimes[-1]+1) #s
@@ -34,8 +35,10 @@ class strfdataset(Dataset):
                 params['max_amp'])
         self.binned_freq = torch.tensor(self.binned_freq, device=self.device)
         self.binned_amp = torch.tensor(self.binned_amp, device=self.device)
-        self.spiking_bins = torch.tensor([i for i in range(self.hist_bins+1,\
-            self.spikes_binned.shape[1])], device = self.device)
+        self.spiking_bins = torch.tensor([i for i in range(self.strf_bins+1,\
+            self.strf_bins+self.params['batchsize']*1000)], device = self.device)
+        # self.spiking_bins = torch.tensor([i for i in range(self.strf_bins+1,\
+            # self.spikes_binned.shape[1])], device = self.device)
         # self.spiking_bins = torch.nonzero(self.spikes_binned)[:,1]
 
     def __len__(self):
@@ -85,7 +88,8 @@ class strfestimation():
                 requires_grad=True, device=self.device, dtype=torch.float32)
         self.bias = torch.randn(1, requires_grad=True, device=self.device)
         # self.optimizer = torch.optim.LBFGS([self.strf_params, self.history_filter, self.bias], lr=params['lr'])
-        minimizer_args = dict(method='Newton-CG', options={'disp':True, 'maxiter':10})
+        # minimizer_args = dict(method='Newton-CG', options={'disp':True, 'maxiter':10})
+        minimizer_args = dict(method='TNC', options={'disp':False, 'maxiter':10})
         self.optimizer = MinimizeWrapper([self.strf_params, self.history_filter, self.bias], minimizer_args)
 
     def run(self, dataloader):
@@ -94,10 +98,10 @@ class strfestimation():
         for e in range(epochs):
             print("Epoch: ", e)
             for ibatch, batchsample in tqdm(enumerate(dataloader)):
+                Xin, Yhist, eta, Yt = batchsample
 
                 def closure():
                     self.optimizer.zero_grad()
-                    Xin, Yhist, eta, Yt = batchsample
                     temp = torch.nn.functional.conv2d(Xin.unsqueeze(1),
                             self.strf_params.unsqueeze(0).unsqueeze(1), bias=None) 
                     temp2 = torch.nn.functional.conv1d(Yhist.unsqueeze(1),\
@@ -122,17 +126,19 @@ class strfestimation():
                     # print("linsumexp", linsumexp)
                     LLh = Yt*linsum - linsumexp #- (Yt+1).lgamma().exp()
                     # print("llh non reg: ", LLh)
-                    LLh += self.params['strf_reg']*torch.norm(self.strf_params, p=2)
-                    LLh += self.params['history_reg']*torch.norm(self.history_filter, p=2)
                     # print("LLH:", LLh)
                     loss = torch.mean(-1*LLh)
+                    loss += self.params['strf_reg']*torch.norm(self.strf_params, p=2)
+                    loss += self.params['history_reg']*torch.norm(self.history_filter, p=2)
+                    loss += self.params['strf_reg']*torch.norm(self.bias, p=2)
                     # print("loss before:", loss)
                     # print("strf weights:", self.strf_params, self.bias)
                     loss.backward()
                     return loss
 
                 loss = self.optimizer.step(closure)
-                # print("is there nan in strf weights? : ", torch.isnan(self.strf_params).any())
+                if(torch.isinf(self.strf_params).any() or torch.isnan(self.strf_params).any()):
+                    print("strf weights have a nan or inf")
                 # print("loss after:", loss)
 
             # print("loss at epoch {} = {}; bias = {}".format(e, loss, numpify(self.bias)))
@@ -167,7 +173,7 @@ def estimate_strf(foldername, dataset_type, params,  figloc, saveloc):
 
     strf_dataset = strfdataset(params, stimuli_df, spikes_df)
     strf_dataloader = DataLoader(strf_dataset, batch_size=params['batchsize'], shuffle=False,
-            num_workers=3)
+            num_workers=4)
     strfest = strfestimation(params)
     strfest.run(strf_dataloader)
     strfest.plotstrf(figloc)
@@ -187,24 +193,25 @@ if(__name__=="__main__"):
     params = {}
     params['binsize'] = 0.02#s = 20ms
     params['strf_timebinsize'] = 0.001#s = 1ms
-    params['strf_timerange'] = [0, 0.25] #s - 0 to 250ms
+    # params['strf_timerange'] = [0, 0.25] #s - 0 to 250ms
+    params['strf_timerange'] = [0, 0.1] #s - 0 to 250ms
     params['delayrange'] = [1, 30]#units
     params['samplerate'] = 10000#samples per second
-    params['sampletimespan'] = [0, 100] #sec
+    params['sampletimespan'] = [0, 150] #sec
     params['minduration'] = 1.640
     params['freqrange'] = [0, 41000]
-    params['freqbinsize'] = 10 #hz/bin -- heuristic/random?
+    params['freqbinsize'] = 100 #hz/bin -- heuristic/random?
     params['hist_size'] = 0.02 #s = 20ms
     params['max_amp'] = 100 #db
 
-    params['lr'] = 1
+    params['lr'] = 0.1
     params['device'] = device
     params['batchsize'] = 32
     params['epochs'] = 1
 
     #regularization params
     params['history_reg'] = 0.001
-    params['strf_reg'] = 0.01
+    params['strf_reg'] = 0.001
 
     # #strf dataset
     # foldername = "../data/strf_data/"

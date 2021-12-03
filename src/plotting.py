@@ -11,7 +11,7 @@ def plot_strf(strfweights, historyweights, timebinst, freqbins, figloc):
     fig, ax = plt.subplots(2, 1, figsize=(20, 10))
     print(strfweights.shape)
     # ax[0].imshow(np.flip(strfweights, 1), cmap='hot', interpolation='none')
-    ax[0].pcolormesh(timebinst, freqbins, strfweights, cmap='hot')
+    ax[0].pcolormesh(timebinst, freqbins, strfweights, cmap='seismic', shading='gouraud')
     ax[0].set_xlabel('lag')
     ax[0].set_ylabel('frequncy bin')
 
