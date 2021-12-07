@@ -168,13 +168,16 @@ class strfestimation():
         self.time_bins = self.params['time_bins']
         self.strf_params = torch.tensor(np.random.normal(size=(self.frequency_bins,
             self.time_bins)), requires_grad=True, device = self.device, dtype=torch.float32)
+        # self.strf_params = torch.tensor(np.random.normal(size=(self.frequency_bins,
+            # self.time_bins)), device = self.device, dtype=torch.float32)
         # self.hist_bins = int(params['hist_size']/params['strf_timebinsize'])
         self.history_filter = torch.tensor(np.random.normal(size=(1, self.params['hist_len'])),
                 requires_grad=True, device=self.device, dtype=torch.float32)
         self.bias = torch.randn(1, requires_grad=True, device=self.device)
+        # self.bias = torch.randn(1, device=self.device)
         # self.optimizer = torch.optim.LBFGS([self.strf_params, self.history_filter, self.bias], lr=params['lr'])
-        # minimizer_args = dict(method='Newton-CG', options={'disp':True, 'maxiter':10})
-        minimizer_args = dict(method='TNC', options={'disp':False, 'maxiter':10})
+        minimizer_args = dict(method='Newton-CG', options={'disp':True, 'maxiter':10})
+        # minimizer_args = dict(method='TNC', options={'disp':False, 'maxiter':10})
         self.optimizer = MinimizeWrapper([self.strf_params, self.bias], minimizer_args)
         # self.optimizer = MinimizeWrapper([self.strf_params, self.history_filter, self.bias], minimizer_args)
 
@@ -201,8 +204,6 @@ class strfestimation():
                         # torch.squeeze(torch.nn.functional.conv1d(Yhist.unsqueeze(1), self.history_filter.unsqueeze(0),\
                         # bias=None)) +  self.bias[None, :] # + eta 
                     
-                    # linsum = torch.mul(Xin, self.strf_params[None, :,:]) + torch.mul(Yhist,\
-                            # self.history_filter[None, :, 0]) + self.bias[None, :] + eta
                     # print("linsum:", linsum)
                     linsumexp = torch.exp(linsum)
                     # print("is there inf in linsum exp? : ", torch.isinf(linsumexp).any())
@@ -215,18 +216,46 @@ class strfestimation():
 
                     # print("linsumexp", linsumexp)
                     LLh = Yt*linsum - linsumexp #- (Yt+1).lgamma().exp()
-                    # print("llh non reg: ", LLh)
                     # print("LLH:", LLh)
                     loss = torch.mean(-1*LLh)
                     loss += self.params['strf_reg']*torch.norm(self.strf_params, p=2)
                     loss += self.params['strf_reg']*torch.norm(self.bias, p=2)
                     # loss += self.params['history_reg']*torch.norm(self.history_filter, p=2)
+
+                    # gradient_strf = torch.mul(Yt[:,None,None], Xin) - torch.mul(Xin,\
+                        # linsumexp[0][:, None, None]) + (1/(self.params['strf_reg']*\
+                        # torch.norm(self.strf_params, p=2)))*self.strf_params
+                    # gradient_strf_batch = torch.mean(gradient_strf, 0)
+
+                    # gradient_bias = Yt - linsumexp[0]
+                    # gradient_bias_batch = torch.mean(gradient_bias, 0)
+
+                    # hessian_strf = -1 * torch.multiply(torch.square(Xin), linsumexp[0][:,None,None])
+                    # hessian_strf_batch = torch.mean(hessian_strf, 0) + 1e-8
+                    # hessian_bias = -1 * linsumexp[0]
+                    # hessian_bias_batch = torch.mean(hessian_bias, 0) + 1e-8
+
+                    # delta_strf = torch.div(gradient_strf_batch, hessian_strf_batch)
+                    # delta_bias = torch.div(gradient_bias_batch, hessian_bias_batch)
+
+                    # self.strf_params -= delta_strf
+                    # self.bias -= delta_bias
+
+                    if(torch.isinf(self.strf_params).any() or torch.isnan(self.strf_params).any()):
+                        print("strf weights have a nan or inf")
+                        print("strf params: ", self.strf_params)
+                        print("grad strf: ", gradient_strf)
+                        print("hessian strf: ", hessian_strf)
+
                     # print("loss before:", loss)
                     # print("strf weights:", self.strf_params, self.bias)
-                    loss.backward()
+                    if(ibatch%100==0):
+                        print("loss as epoch {}, batch {} = {}".format(e, ibatch, loss))
+                    # loss.backward()
                     return loss
 
                 loss = self.optimizer.step(closure)
+                # loss = closure()
                 if(torch.isinf(self.strf_params).any() or torch.isnan(self.strf_params).any()):
                     print("strf weights have a nan or inf")
                 # print("loss after:", loss)
@@ -274,7 +303,7 @@ if(__name__=="__main__"):
     params['n_decim'] = n_decim
     params['binsize'] = 0.02#s = 20ms
     params['freq_bins'] = 20 # total bins
-    params['time_span'] = [-0.1, 0.4]
+    params['time_span'] = [0.0, 0.5]
     tmin, tmax = params['time_span']
     params['time_bins'] = len(np.arange(np.round(tmin * sfreq), np.round(tmax * sfreq) +\
         1).astype(int))
@@ -295,7 +324,7 @@ if(__name__=="__main__"):
     params['lr'] = 0.01
     params['device'] = device
     params['batchsize'] = 128
-    params['epochs'] = 50
+    params['epochs'] = 100
 
     #regularization params
     params['history_reg'] = 0.001
