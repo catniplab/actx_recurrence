@@ -22,28 +22,21 @@ from utils import raster_fulltoevents, exponentialClass, spectral_resample, nump
 from plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata,\
     plot_rasterpsth, plot_spectrogram, plot_strf
 
+np.random.seed(100)
+torch.manual_seed(100)
+
 class TestDataset(Dataset):
     def __init__(self, params):
         self.device = params['device']
         self.params = params
-        rng = np.random.RandomState(1337)
         self.strf_bins = int(self.params['strf_timerange'][1]/self.params['strf_timebinsize'])
         self.hist_len = self.params['hist_len']
+        self.weights = self.create_filter()
+        self.stimuli_nme(strf_filter)
 
-        ## test_stimuli -- load data from mne dataset
-        path_audio = mne.datasets.mtrf.data_path()
-        data = loadmat(path_audio + '/speech_data.mat')
-        audio = data['spectrogram'].T
-        print(audio.shape)
-        sfreq = float(data['Fs'][0, 0])
-        print("sfreq", sfreq)
-        n_decim = self.params['n_decim']
-        audio = mne.filter.resample(audio, down=n_decim, npad='auto')
-        sfreq /= n_decim
-
+    def create_filter(self, params):
         # ## create a filter 
         # weights = self.sample_filter(sfreq)
-
         ## https://mne.tools/dev/auto_tutorials/machine-learning/30_strf.html
         n_freqs = params['freq_bins']
         tmin, tmax = self.params['time_span']
@@ -65,19 +58,23 @@ class TestDataset(Dataset):
         gauss_high = multivariate_normal.pdf(grid, means_high, cov)
         gauss_low = -1 * multivariate_normal.pdf(grid, means_low, cov)
         weights = 1*(gauss_high + gauss_low)  # Combine to create the "true" STRF
+        # print("weights:", weights.shape)
+        return weights
 
-        # kwargs = dict(vmax=np.abs(weights).max(), vmin=-np.abs(weights).max(),
-                      # cmap='RdBu_r', shading='gouraud')
-        # fig, ax = plt.subplots()
-        # ax.pcolormesh(delays_sec, freqs, weights, **kwargs)
-        # ax.set(title='Simulated STRF', xlabel='Time Lags (s)', ylabel='Frequency (Hz)')
-        # plt.setp(ax.get_xticklabels(), rotation=45)
-        # plt.autoscale(tight=True)
-        # plt.plot()
-        # plt.show()
+    def stimuli_nme(self, weights):
+        rng = np.random.RandomState(1337)
 
-        print("weights:", weights.shape)
-        
+        ## test_stimuli -- load data from mne dataset
+        path_audio = mne.datasets.mtrf.data_path()
+        data = loadmat(path_audio + '/speech_data.mat')
+        audio = data['spectrogram'].T
+        print("OG audio shape:", audio.shape)
+        sfreq = float(data['Fs'][0, 0])
+        print("sfreq", sfreq)
+        n_decim = self.params['n_decim']
+        audio = mne.filter.resample(audio, down=n_decim, npad='auto')
+        sfreq /= n_decim
+
         ## create a delay spectrogram
         # Reshape audio to split into epochs, then make epochs the first dimension.
         n_epochs, n_seconds = 1, 5*16
@@ -86,7 +83,6 @@ class TestDataset(Dataset):
         X = audio.reshape([n_freqs, n_epochs, -1]).swapaxes(0, 1)
         print("X: ", X.shape)
         X = np.expand_dims(scale(X[0]), 0)
-        # print("X :", X)
         n_times = X.shape[-1]
 
         # Delay the spectrogram according to delays so it can be combined w/ the STRF
@@ -129,25 +125,55 @@ class TestDataset(Dataset):
             # print(y[ii].shape, np.exp(y[ii]).shape) 
             y_poss[ii] = np.random.poisson(lam=np.exp(y[ii]), size=(1, n_times)) 
 
-        # X_plt = scale(np.hstack(X[:2]).T).T
-        # y_plt = scale(np.hstack(y[:2]))
-        # time = np.arange(X_plt.shape[-1]) / sfreq
-        # _, (ax1, ax2) = plt.subplots(2, 1, figsize=(6, 6), sharex=True)
-        # ax1.pcolormesh(time, freqs, X_plt, vmin=0, vmax=4, cmap='Reds',
-                       # shading='gouraud')
-        # ax1.set_title('Input auditory features')
-        # ax1.set(ylim=[freqs.min(), freqs.max()], ylabel='Frequency (Hz)')
-        # ax2.plot(time, y_plt)
-        # ax2.set(xlim=[time.min(), time.max()], title='Simulated response',
-        # xlabel='Time (s)', ylabel='Activity (a.u.)')
-        # plt.show()
-
-        # print("yii", y)
         print("yii poss", y_poss)
         self.Y = torch.tensor(y_poss, dtype=torch.float32, device=self.device)
         print("non zero y", np.count_nonzero(y_poss[0]))
         self.usedidxs = torch.tensor([i for i in range(0, y.shape[1]-self.strf_bins)],
                 device=self.device)
+
+    def create_stimuli(self):
+        samplerate = 128/2
+        time_length = 100 #sec
+        freq_range = [500, 5000] #hz
+        num_timebins = 33
+        num_freqbins = 20
+        delay_gap = int(0.75*samplerate)
+        start_point = int(0.5*time_length)
+        p_type = [0,1,2]
+        w_type = [0.7, 0.15, 0.15]
+        amplitudes = [10, 20, 30, 40, 50]
+        discrete_freq = np.linscale(start = freq_range[0], end= freq_range[1], num_freqbins)
+        total_bins = int(time_length*num_timebins)
+        bins_per_trail = delay_gap+num_timebins
+        fmsweep = ((freq_range[0]*np.logspace(0, 10, num=10, base=2.0)) -
+                freq_range[0])//((freq_range[1]-freq_range[0])/num_freqbins)
+
+        freq_time = torch.zeros((1, samplerate*time_length))
+        amp_time = torch.zeros((1, samplerate*time_length))
+
+        for t in range(start_point, total_bins, bins_per_trail):
+            if(t+time_bins>total_bins):
+                break
+            stimuli_type = np.random.choice(p_type, size=1, replace=True, p=w_type)
+            amp = np.random.choice(amplitudes, size=1)
+
+            if(stimuli_type==0): #flat tone
+                freq = np.random.choice(discrete_freq.shape[0], shape=1)
+                freq = discrete_freq[freq]
+                freq_time[t:t+time_bins] = freq
+                amp_time[t:t+time_bins] = amp
+            elif(stimuli_type == 1): #FM sweep
+                fmsweep_len = fmsweep.shape[0]
+                freq_time[t:t+fmsweep_len] = fmsweep
+                amp_time[t:t+fmsweep_len] = amp
+            elif(stimuli_type==2): #white noise
+                freq = np.random.choice(discrete_freq, shape=num_timebins)
+                freq_time[t:t+time_bins] = freq
+                amp_time[t:t+time_bins] = amp
+
+        ## creating spectrograms
+
+
 
     def __len__(self):
         # print("useidxs", self.usedidxs.shape[0])
