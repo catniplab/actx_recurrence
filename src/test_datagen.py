@@ -30,9 +30,11 @@ class TestDataset(Dataset):
         self.device = params['device']
         self.params = params
         self.strf_bins = int(self.params['strf_timerange'][1]/self.params['strf_timebinsize'])
+        self.num_timebins = 33
         self.hist_len = self.params['hist_len']
-        self.weights = self.create_filter()
-        self.stimuli_nme(strf_filter)
+        self.weights = self.create_filter(params)
+        # self.stimuli_nme(strf_filter)
+        self.X, self.Y, self.usedidxs = self.create_stimuli()
 
     def create_filter(self, params):
         # ## create a filter 
@@ -108,7 +110,7 @@ class TestDataset(Dataset):
         # Now set the delayed axis to the 2nd dimension
         X_del = np.rollaxis(X_del, 0, 3)
         print("xdel shape", X_del.shape)
-        self.X_del = torch.tensor(X_del, dtype=torch.float32, device=self.device)[0,:]
+        X_del_return = torch.tensor(X_del, dtype=torch.float32, device=self.device)[0,:]
         print("xdel self shape", self.X_del.shape)
         X_del = X_del.reshape([n_epochs, -1, n_times])
         print("xdel shape", X_del.shape)
@@ -126,14 +128,15 @@ class TestDataset(Dataset):
             y_poss[ii] = np.random.poisson(lam=np.exp(y[ii]), size=(1, n_times)) 
 
         print("yii poss", y_poss)
-        self.Y = torch.tensor(y_poss, dtype=torch.float32, device=self.device)
+        Y_return = torch.tensor(y_poss, dtype=torch.float32, device=self.device)
         print("non zero y", np.count_nonzero(y_poss[0]))
-        self.usedidxs = torch.tensor([i for i in range(0, y.shape[1]-self.strf_bins)],
+        usedidxs = torch.tensor([i for i in range(0, y.shape[1]-self.strf_bins)],
                 device=self.device)
+        return X_del_return, Y_return, usedidxs
 
     def create_stimuli(self):
         samplerate = 128/2
-        time_length = 100 #sec
+        time_length = 1000 #sec
         freq_range = [500, 5000] #hz
         num_timebins = 33
         num_freqbins = 20
@@ -142,49 +145,63 @@ class TestDataset(Dataset):
         p_type = [0,1,2]
         w_type = [0.7, 0.15, 0.15]
         amplitudes = [10, 20, 30, 40, 50]
-        discrete_freq = np.linscale(start = freq_range[0], end= freq_range[1], num_freqbins)
-        total_bins = int(time_length*num_timebins)
+        amplitudes /= np.mean(amplitudes)
+        noise_amp = .002
+        discrete_freq = np.linspace(start = freq_range[0], stop = freq_range[1], num = num_freqbins)
+        total_bins = int(time_length*samplerate)
         bins_per_trail = delay_gap+num_timebins
-        fmsweep = ((freq_range[0]*np.logspace(0, 10, num=10, base=2.0)) -
-                freq_range[0])//((freq_range[1]-freq_range[0])/num_freqbins)
+        fmsweep = freq_range[0]*np.logspace(0, 0.99, num=12, base=10.0)
+        fmsweep = ((fmsweep - freq_range[0])//((freq_range[1]-freq_range[0])/num_freqbins)).astype('int')
+        # print(fmsweep)
 
-        freq_time = torch.zeros((1, samplerate*time_length))
-        amp_time = torch.zeros((1, samplerate*time_length))
+        freq_time = np.zeros((1, total_bins))
+        freq_time_idx = np.zeros((1, total_bins), dtype=np.int64)
+        amp_time = np.zeros((1, total_bins))
 
         for t in range(start_point, total_bins, bins_per_trail):
-            if(t+time_bins>total_bins):
+            if(t+num_timebins>total_bins):
                 break
             stimuli_type = np.random.choice(p_type, size=1, replace=True, p=w_type)
-            amp = np.random.choice(amplitudes, size=1)
+            amp = np.random.choice(amplitudes, size=1)[0]
 
             if(stimuli_type==0): #flat tone
-                freq = np.random.choice(discrete_freq.shape[0], shape=1)
-                freq = discrete_freq[freq]
-                freq_time[t:t+time_bins] = freq
-                amp_time[t:t+time_bins] = amp
+                freq = np.random.choice(discrete_freq.shape[0], size=1)
+                freq_time_idx[0, t:t+num_timebins] = freq[0].astype('int')
+                freq = discrete_freq[freq][0]
+                freq_time[0, t:t+num_timebins] = freq
+                amp_time[0, t:t+num_timebins] = amp
             elif(stimuli_type == 1): #FM sweep
                 fmsweep_len = fmsweep.shape[0]
-                freq_time[t:t+fmsweep_len] = fmsweep
-                amp_time[t:t+fmsweep_len] = amp
+                freq_time_idx[0, t:t+fmsweep_len] = fmsweep
+                freq_time[0, t:t+fmsweep_len] = discrete_freq[fmsweep]
+                amp_time[0, t:t+fmsweep_len] = amp
             elif(stimuli_type==2): #white noise
-                freq = np.random.choice(discrete_freq, shape=num_timebins)
-                freq_time[t:t+time_bins] = freq
-                amp_time[t:t+time_bins] = amp
+                freq = np.random.choice(discrete_freq.shape[0], size=num_timebins)
+                freq_time_idx[0, t:t+num_timebins] = freq.astype('int')
+                freq_time[0, t:t+num_timebins] = discrete_freq[freq]
+                amp_time[0, t:t+num_timebins] = amp
 
         ## creating spectrograms
+        Xs = np.zeros((total_bins-num_timebins, num_freqbins, num_timebins))
+        Ys = np.zeros((1, total_bins))
+        usedidxs = torch.tensor(np.arange(Xs.shape[0]), device=self.device)
+        for t in range(Xs.shape[0]):
+            Xs[t, freq_time_idx[0, t:t+num_timebins], :] = amp_time[0, t:t+num_timebins]
+            linsum = np.sum(np.multiply(Xs[t,:,:], self.weights)) # add noise
+            Ys[0, t+num_timebins] = np.random.poisson(lam=np.exp(linsum), size=(1)) 
 
-
+        return torch.tensor(Xs, device=self.device), torch.tensor(Ys, device=self.device), usedidxs
 
     def __len__(self):
         # print("useidxs", self.usedidxs.shape[0])
         return self.usedidxs.shape[0]
 
     def __getitem__(self, idx):
-        X = self.X_del[:,:, idx+self.strf_bins]
+        X = self.X[idx,:,:].type(torch.float32)
         # print(X.shape)
-        Yhist = self.Y[0, idx+self.strf_bins-self.hist_len-1:idx+self.strf_bins-1]
+        Yhist = self.Y[0, idx+self.num_timebins-self.hist_len-1:idx+self.num_timebins-1]
         # print(Yhist.shape)
-        return X, Yhist, torch.tensor([0.0]), self.Y[0, idx+self.strf_bins] 
+        return X, Yhist, torch.tensor([0.0]), self.Y[0, idx+self.num_timebins] 
 
 class strfestimation():
     def __init__(self, params):
@@ -215,6 +232,37 @@ class strfestimation():
             for ibatch, batchsample in tqdm(enumerate(dataloader)):
                 Xin, Yhist, eta, Yt = batchsample
                 # print(Xin.shape, Yt.shape, Yhist.shape)
+
+                class Closure():
+                    def __init__(self, batch, optimizer):
+                        self.batch = batch
+                        self.optimizer = optimizer
+                        # self.X, self.Yhist, self.eta, self.Yt = batch
+
+                    @staticmethod
+                    def loss(batch):
+                        Xin, Yhist, eta, Yt = batch
+                        temp = torch.nn.functional.conv2d(Xin.unsqueeze(1),
+                                self.strf_params.unsqueeze(0).unsqueeze(1), bias=None) 
+                        # temp2 = torch.nn.functional.conv1d(Yhist.unsqueeze(1),\
+                                # self.history_filter.unsqueeze(0), bias=None)
+                        linsum = torch.squeeze(torch.nn.functional.conv2d(Xin.unsqueeze(1),\
+                            self.strf_params.unsqueeze(0).unsqueeze(1), bias=None)) +\
+                            self.bias[None, :] # + eta 
+                        # print("linsum:", linsum)
+                        linsumexp = torch.exp(linsum)
+
+                        LLh = Yt*linsum - linsumexp #- (Yt+1).lgamma().exp() # print("LLH:", LLh)
+                        loss = torch.mean(-1*LLh)
+                        loss += self.params['strf_reg']*torch.norm(self.strf_params, p=2)
+                        loss += self.params['strf_reg']*torch.norm(self.bias, p=2)
+                        return loss
+
+                    def __call__(self):
+                        self.optimizer.zero_grad()
+                        loss = self.loss(self.batch)
+                        loss.backward()
+                        return loss
 
                 def closure():
                     self.optimizer.zero_grad()
@@ -248,39 +296,17 @@ class strfestimation():
                     loss += self.params['strf_reg']*torch.norm(self.bias, p=2)
                     # loss += self.params['history_reg']*torch.norm(self.history_filter, p=2)
 
-                    # gradient_strf = torch.mul(Yt[:,None,None], Xin) - torch.mul(Xin,\
-                        # linsumexp[0][:, None, None]) + (1/(self.params['strf_reg']*\
-                        # torch.norm(self.strf_params, p=2)))*self.strf_params
-                    # gradient_strf_batch = torch.mean(gradient_strf, 0)
-
-                    # gradient_bias = Yt - linsumexp[0]
-                    # gradient_bias_batch = torch.mean(gradient_bias, 0)
-
-                    # hessian_strf = -1 * torch.multiply(torch.square(Xin), linsumexp[0][:,None,None])
-                    # hessian_strf_batch = torch.mean(hessian_strf, 0) + 1e-8
-                    # hessian_bias = -1 * linsumexp[0]
-                    # hessian_bias_batch = torch.mean(hessian_bias, 0) + 1e-8
-
-                    # delta_strf = torch.div(gradient_strf_batch, hessian_strf_batch)
-                    # delta_bias = torch.div(gradient_bias_batch, hessian_bias_batch)
-
-                    # self.strf_params -= delta_strf
-                    # self.bias -= delta_bias
-
-                    if(torch.isinf(self.strf_params).any() or torch.isnan(self.strf_params).any()):
-                        print("strf weights have a nan or inf")
-                        print("strf params: ", self.strf_params)
-                        print("grad strf: ", gradient_strf)
-                        print("hessian strf: ", hessian_strf)
-
                     # print("loss before:", loss)
                     # print("strf weights:", self.strf_params, self.bias)
-                    if(ibatch%100==0):
+
+                    if(ibatch%200==0):
                         print("loss as epoch {}, batch {} = {}".format(e, ibatch, loss))
-                    # loss.backward()
+                    loss.backward()
                     return loss
 
-                loss = self.optimizer.step(closure)
+                cl = Closure(batchsample, self.optimizer)
+                self.optimizer.step(cl)
+                # loss = self.optimizer.step(closure)
                 # loss = closure()
                 if(torch.isinf(self.strf_params).any() or torch.isnan(self.strf_params).any()):
                     print("strf weights have a nan or inf")
@@ -350,7 +376,7 @@ if(__name__=="__main__"):
     params['lr'] = 0.01
     params['device'] = device
     params['batchsize'] = 128
-    params['epochs'] = 100
+    params['epochs'] = 3
 
     #regularization params
     params['history_reg'] = 0.001
