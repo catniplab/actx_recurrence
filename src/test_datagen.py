@@ -219,7 +219,7 @@ class strfestimation():
         self.bias = torch.randn(1, requires_grad=True, device=self.device)
         # self.bias = torch.randn(1, device=self.device)
         # self.optimizer = torch.optim.LBFGS([self.strf_params, self.history_filter, self.bias], lr=params['lr'])
-        minimizer_args = dict(method='Newton-CG', options={'disp':True, 'maxiter':10})
+        minimizer_args = dict(method='Newton-CG', options={'disp':False, 'maxiter':10})
         # minimizer_args = dict(method='TNC', options={'disp':False, 'maxiter':10})
         self.optimizer = MinimizeWrapper([self.strf_params, self.bias], minimizer_args)
         # self.optimizer = MinimizeWrapper([self.strf_params, self.history_filter, self.bias], minimizer_args)
