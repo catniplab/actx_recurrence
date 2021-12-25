@@ -7,13 +7,19 @@ import seaborn
 
 from utils import exponentialClass
 
-def plot_strf(strfweights, historyweights, timebinst, freqbins, figloc):
+def plot_strf(strfweights, historyweights, timebinst, freqbins, timebin, freqs, figloc):
     fig, ax = plt.subplots(2, 1, figsize=(20, 10))
-    print(strfweights.shape)
+    # print(strfweights.shape)
+    # print(freqs, timebin)
     # ax[0].imshow(np.flip(strfweights, 1), cmap='hot', interpolation='none')
-    ax[0].pcolormesh(timebinst, freqbins, strfweights, cmap='seismic', shading='gouraud')
-    ax[0].set_xlabel('lag')
+    # ax[0].pcolormesh(timebinst, freqbins, strfweights, cmap='seismic', shading='gouraud', vmin=-1,
+            # vmax=1)
+    ax[0].pcolormesh(timebin, freqs, strfweights, cmap='seismic', shading='gouraud', vmin=-1,
+            vmax=1)
+    ax[0].set_xlabel('lag (ms)')
     ax[0].set_ylabel('frequncy bin')
+    # ax[0].set_xticks(timebin)
+    # ax[0].set_yticks(freqs)
 
     ## plot history weights
     # print(historyweights.shape)
@@ -21,7 +27,8 @@ def plot_strf(strfweights, historyweights, timebinst, freqbins, figloc):
     ax[1].plot(np.flip(historyweights,0)[0], 'go--')
     ax[1].set_xlabel('lag')
     ax[1].set_ylabel('amplitude')
-
+    
+    plt.autoscale(tight=True)
     plt.savefig(figloc, bbox_inches='tight')
     plt.close()
 
