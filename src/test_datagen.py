@@ -40,9 +40,11 @@ class TestDataset(Dataset):
         print("number of non zero spike bins:", torch.nonzero(self.Y).shape)
         print("number of spikes:", torch.sum(self.Y))
         print("full_spec: ", full_spec.shape)
+
+        # print("weights:", self.weights)
         self.calculate_rank(self.X)
-        np.set_printoptions(threshold=sys.maxsize)
-        plot_spectrogram(full_spec[:, 6400:7000].T, "../outputs/spec1.pdf")
+        # np.set_printoptions(threshold=sys.maxsize)
+        # plot_spectrogram(full_spec[:, 6400:7000].T, "../outputs/spec1.pdf")
 
     def create_filter(self, params):
         # ## create a filter 
@@ -68,16 +70,19 @@ class TestDataset(Dataset):
         cov = [[.001, 0], [0, 500000]]
         gauss_high = multivariate_normal.pdf(grid, means_high, cov)
         gauss_low = -1 * multivariate_normal.pdf(grid, means_low, cov)
+        print("min max of gauss high:", np.min(gauss_high), np.max(gauss_high))
+        print("min max of gauss low:", np.min(gauss_low), np.max(gauss_low))
         weights = 10*(gauss_high + gauss_low)  # Combine to create the "true" STRF
+        print("min max of gauss total:", np.min(weights), np.max(weights))
         # print("weights:", weights.shape)
-        kwargs = dict(vmax=np.abs(weights).max(), vmin=-np.abs(weights).max(),
-                      cmap='RdBu_r', shading='gouraud')
-        fig, ax = plt.subplots()
-        ax.pcolormesh(delays_sec, freqs, weights, **kwargs)
-        ax.set(title='Simulated STRF', xlabel='Time Lags (s)', ylabel='Frequency (Hz)')
-        plt.setp(ax.get_xticklabels(), rotation=45)
-        plt.autoscale(tight=True)
-        plt.show()
+        # kwargs = dict(vmax=np.abs(weights).max(), vmin=-np.abs(weights).max(),
+                      # cmap='RdBu_r', shading='gouraud')
+        # fig, ax = plt.subplots()
+        # ax.pcolormesh(delays_sec, freqs, weights, **kwargs)
+        # ax.set(title='Simulated STRF', xlabel='Time Lags (s)', ylabel='Frequency (Hz)')
+        # plt.setp(ax.get_xticklabels(), rotation=45)
+        # plt.autoscale(tight=True)
+        # plt.show()
         return weights
 
     def stimuli_nme(self, weights):
@@ -166,13 +171,13 @@ class TestDataset(Dataset):
         freq_range = [500, 5000] #hz
         num_timebins = 30
         num_freqbins = 20
-        delay_gap = int(0.01*samplerate)
+        delay_gap = 0 # int(0.01*samplerate)
         start_point = int(0.1*time_length)
-        stim_len = 5
+        stim_len = 7
         p_type = [0,1,2]
         w_type = [1, 0.0, 0.0]
-        amplitudes = [1, 2, 3, 4, 5]*10
-        bias = -4
+        amplitudes = np.asarray([1, 2, 3, 4, 5, 6])
+        bias = -3
         # amplitudes /= np.mean(amplitudes)
         noise_amp = .002
         discrete_freq = np.linspace(start = freq_range[0], stop = freq_range[1], num = num_freqbins)
@@ -192,6 +197,7 @@ class TestDataset(Dataset):
                 break
             stimuli_type = np.random.choice(p_type, size=1, replace=True, p=w_type)
             amp = np.random.choice(amplitudes, size=1)[0]
+            # print(amp)
 
             if(stimuli_type==0): #flat tone
                 freq = np.random.choice(discrete_freq.shape[0], size=1)
@@ -216,13 +222,22 @@ class TestDataset(Dataset):
         ## creating spectrograms
         Xs = np.zeros((total_bins-num_timebins, num_freqbins, num_timebins))
         Ys = np.zeros((1, total_bins))
+        linsums = []
+        linsumsexp = []
         usedidxs = torch.tensor(np.arange(Xs.shape[0]), device=self.device)
         for t in range(Xs.shape[0]):
             Xs[t, freq_time_idx[0, t:t+num_timebins], :] = amp_time[0, t:t+num_timebins]
             linsum = np.sum(np.multiply(Xs[t,:,:], self.weights)) + bias # add noise
             Ys[0, t+num_timebins] = np.random.poisson(lam=np.exp(linsum), size=(1)) 
+            linsums.append(linsum)
+            linsumsexp.append(np.exp(linsum))
             # print("fr: ", np.exp(linsum), linsum, Ys[0,t+num_timebins])
         
+        linsumsexp = np.asarray(linsumsexp)
+        linsums = np.asarray(linsums)
+        print("mean fr: ", np.mean(linsumsexp))
+        print("total linsums: ", np.sum(linsums))
+
         return torch.tensor(Xs, device=self.device), torch.tensor(Ys, device=self.device),\
     usedidxs, full_spec
 
@@ -254,10 +269,35 @@ class strfestimation():
         self.bias = torch.tensor(val, requires_grad=True, device=self.device, dtype=torch.float)
         # self.bias = torch.randn(1, device=self.device)
         # self.optimizer = torch.optim.LBFGS([self.strf_params, self.history_filter, self.bias], lr=params['lr'])
+        self.optimizer_linreg = torch.optim.SGD([self.strf_params, self.bias], lr=params['lr'])
         # minimizer_args = dict(method='Newton-CG', options={'disp':True, 'maxiter':2})
         minimizer_args = dict(method='TNC', options={'disp':False, 'maxiter':10})
         self.optimizer = MinimizeWrapper([self.strf_params, self.bias], minimizer_args)
         # self.optimizer = MinimizeWrapper([self.strf_params, self.history_filter, self.bias], minimizer_args)
+
+    def linreg_fit(self, dataloader):
+        print("fitting weights on linear regression")
+        for ibatch, batchsample in tqdm(enumerate(dataloader)):
+            Xin, Yhist, eta, Yt = batchsample
+            Yt = Yt.type('torch.FloatTensor')
+            self.optimizer_linreg.zero_grad()
+            linsum = torch.squeeze(torch.nn.functional.conv2d(Xin.unsqueeze(1),
+                self.strf_params.unsqueeze(0).unsqueeze(1), bias=None)) + self.bias[None,:] 
+            # print("linsum: ", linsum)
+            lmbda = torch.exp(linsum)[0,:] ## firing rate
+            lmbda = torch.clamp(lmbda, max=1e+3)
+            # print("in lin reg fit:", lmbda, Yt)
+            loss = torch.nn.functional.mse_loss(lmbda, Yt) 
+            # print("loss: ", loss)
+            # break
+            
+            loss += self.params['strf_reg']*torch.norm(self.strf_params, p=2)
+            loss.backward()
+            self.optimizer_linreg.step()
+            if(ibatch%100==0):
+                print("loss for lin reg fitting : {}".format(loss))
+                # print(self.strf_params, self.bias)
+
 
     def run(self, dataloader):
         epochs = params['epochs']
@@ -267,38 +307,6 @@ class strfestimation():
             for ibatch, batchsample in tqdm(enumerate(dataloader)):
                 Xin, Yhist, eta, Yt = batchsample
                 # print(Xin.shape, Yt.shape, Yhist.shape)
-
-                class Closure():
-                    def __init__(self, batch, optimizer):
-                        self.batch = batch
-                        self.optimizer = optimizer
-                        # self.X, self.Yhist, self.eta, self.Yt = batch
-
-                    @staticmethod
-                    def loss(batch):
-                        Xin, Yhist, eta, Yt = batch
-                        temp = torch.nn.functional.conv2d(Xin.unsqueeze(1),
-                                self.strf_params.unsqueeze(0).unsqueeze(1), bias=None) 
-                        # temp2 = torch.nn.functional.conv1d(Yhist.unsqueeze(1),\
-                                # self.history_filter.unsqueeze(0), bias=None)
-                        linsum = torch.squeeze(torch.nn.functional.conv2d(Xin.unsqueeze(1),\
-                            self.strf_params.unsqueeze(0).unsqueeze(1), bias=None)) +\
-                            self.bias[None, :] # + eta 
-                        # print("linsum:", linsum)
-                        linsumexp = torch.exp(linsum)
-
-                        LLh = Yt*linsum - linsumexp #- (Yt+1).lgamma().exp() # print("LLH:", LLh)
-                        loss = torch.mean(-1*LLh)
-                        loss += self.params['strf_reg']*torch.norm(self.strf_params, p=2)
-                        # loss += self.params['strf_reg']*torch.norm(self.bias, p=2)
-                        print("loss value: ", loss)
-                        return loss
-
-                    def __call__(self):
-                        # self.optimizer.zero_grad()
-                        loss = self.loss(self.batch)
-                        loss.backward()
-                        return loss
 
                 def closure():
                     self.optimizer.zero_grad()
@@ -332,13 +340,10 @@ class strfestimation():
                     # print("strf weights:", self.strf_params, self.bias)
 
                     if(ibatch%200==0):
-                        print("loss as epoch {}, batch {} = {}".format(e, ibatch, loss))
+                        print("loss at epoch {}, batch {} = {}".format(e, ibatch, loss))
                     loss.backward()
                     return loss
 
-                # self.optimizer.zero_grad()
-                # cl = Closure(batchsample, self.optimizer)
-                # self.optimizer.step(cl)
                 loss = self.optimizer.step(closure)
                 # loss = closure()
                 if(torch.isinf(self.strf_params).any() or torch.isnan(self.strf_params).any()):
@@ -355,12 +360,13 @@ class strfestimation():
         print("strf weights: ", numpify(self.strf_params))
         freqs = np.linspace(50, 5000, self.frequency_bins)
         timebinst = np.array(timebins)*(1000.0/self.params['samplerate'])
+        strf_vals = numpify(self.strf_params)
+        strf_vals = strf_vals/(np.max(np.absolute(strf_vals)))
 
-        plot_strf(numpify(self.strf_params),
-                numpify(self.history_filter), timebins, freqbins, timebinst, freqs, figloc)
+        plot_strf(strf_vals, numpify(self.history_filter), timebins, freqbins, timebinst, freqs, figloc)
 
     def save_weights(self, loc):
-       with h5py.File(loc, 'w') as h5f :
+        with h5py.File(loc, 'w') as h5f :
            h5f.create_dataset('strf_weights', data = numpify(self.strf_params))
            h5f.create_dataset('hist_weights', data= numpify(self.history_filter))
            h5f.create_dataset('bias', data = numpify(self.bias))
@@ -382,6 +388,7 @@ def estimate_strf(params, figloc, saveloc):
     # strfest.load_weights(weights_loc)
     # strfest.plotstrf(figloc)
 
+    strfest.linreg_fit(testdataloader)
     # strfest.run(testdataloader)
     # strfest.plotstrf(figloc)
     # strfest.save_weights(saveloc)
@@ -429,7 +436,7 @@ if(__name__=="__main__"):
 
     #regularization params
     params['history_reg'] = 0.001
-    params['strf_reg'] = 0.5
+    params['strf_reg'] = 1.0
 
     dtnow = datetime.now()
     dtnow = dtnow.strftime("%m%d%y_%H%M%S")
