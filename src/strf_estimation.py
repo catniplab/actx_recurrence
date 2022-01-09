@@ -86,11 +86,13 @@ class strfestimation():
         self.hist_bins = int(params['hist_size']/params['strf_timebinsize'])
         self.history_filter = torch.tensor(np.random.normal(size=(1, self.hist_bins)),
                 requires_grad=True, device=self.device, dtype=torch.float32)
-        self.bias = torch.randn(1, requires_grad=True, device=self.device)
+        val = np.random.uniform(-5.0, -1.0, 1) 
+        self.bias = torch.tensor(val, requires_grad=True, device=self.device, dtype=torch.float)
         # self.optimizer = torch.optim.LBFGS([self.strf_params, self.history_filter, self.bias], lr=params['lr'])
         # minimizer_args = dict(method='Newton-CG', options={'disp':True, 'maxiter':10})
         minimizer_args = dict(method='TNC', options={'disp':False, 'maxiter':10})
-        self.optimizer = MinimizeWrapper([self.strf_params, self.history_filter, self.bias], minimizer_args)
+        self.optimizer = MinimizeWrapper([self.strf_params, self.bias], minimizer_args)
+        # self.optimizer = MinimizeWrapper([self.strf_params, self.history_filter, self.bias], minimizer_args)
 
     def run(self, dataloader):
         epochs = params['epochs']
@@ -102,25 +104,28 @@ class strfestimation():
 
                 def closure():
                     self.optimizer.zero_grad()
-                    temp = torch.nn.functional.conv2d(Xin.unsqueeze(1),
-                            self.strf_params.unsqueeze(0).unsqueeze(1), bias=None) 
-                    temp2 = torch.nn.functional.conv1d(Yhist.unsqueeze(1),\
-                            self.history_filter.unsqueeze(0), bias=None)
+                    # temp = torch.nn.functional.conv2d(Xin.unsqueeze(1),
+                            # self.strf_params.unsqueeze(0).unsqueeze(1), bias=None) 
+                    # temp2 = torch.nn.functional.conv1d(Yhist.unsqueeze(1),\
+                            # self.history_filter.unsqueeze(0), bias=None)
+
+                    # linsum = torch.squeeze(torch.nn.functional.conv2d(Xin.unsqueeze(1),\
+                        # self.strf_params.unsqueeze(0).unsqueeze(1), bias=None)) +\
+                        # torch.squeeze(torch.nn.functional.conv1d(Yhist.unsqueeze(1),\
+                        # self.history_filter.unsqueeze(0),bias=None)) +\
+                        # self.bias[None, :] # + eta 
+
                     linsum = torch.squeeze(torch.nn.functional.conv2d(Xin.unsqueeze(1),\
                         self.strf_params.unsqueeze(0).unsqueeze(1), bias=None)) +\
-                        torch.squeeze(torch.nn.functional.conv1d(Yhist.unsqueeze(1), self.history_filter.unsqueeze(0),\
-                        bias=None)) +  self.bias[None, :] # + eta 
+                        self.bias[None, :]
                     
-                    # linsum = torch.mul(Xin, self.strf_params[None, :,:]) + torch.mul(Yhist,\
-                            # self.history_filter[None, :, 0]) + self.bias[None, :] + eta
-                    # print("linsum:", linsum)
                     linsumexp = torch.exp(linsum)
                     # print("is there inf in linsum exp? : ", torch.isinf(linsumexp).any())
                     if(torch.isinf(linsumexp).any()):
                         print("linsum :", linsum, linsum.shape)
                         print("limsumexp: ", linsumexp, linsumexp.shape)
-                        print("temp1: ", temp, temp.shape)
-                        print("temp2: ", temp2, temp2.shape)
+                        # print("temp1: ", temp, temp.shape)
+                        # print("temp2: ", temp2, temp2.shape)
                         # print("History: ", Yhist, Yhist.shape)
 
                     # print("linsumexp", linsumexp)
@@ -129,8 +134,8 @@ class strfestimation():
                     # print("LLH:", LLh)
                     loss = torch.mean(-1*LLh)
                     loss += self.params['strf_reg']*torch.norm(self.strf_params, p=2)
-                    loss += self.params['history_reg']*torch.norm(self.history_filter, p=2)
-                    loss += self.params['strf_reg']*torch.norm(self.bias, p=2)
+                    # loss += self.params['history_reg']*torch.norm(self.history_filter, p=2)
+                    # loss += self.params['strf_reg']*torch.norm(self.bias, p=2)
                     # print("loss before:", loss)
                     # print("strf weights:", self.strf_params, self.bias)
                     loss.backward()
@@ -185,10 +190,11 @@ if(__name__=="__main__"):
     device = torch.device('cpu')
 
     # prestrf dataset
-    foldername = "../data/prestrf_data/ACx_data_{}/ACx{}/"
-    datafiles = [1,2,3]
-    cortexside = ["Calyx", "Thelo"]
-    dataset_type = 'prestrf'
+    # foldername = "../data/prestrf_data/ACx_data_{}/ACx{}/"
+    # datafiles = [1,2,3]
+    # cortexside = ["Calyx", "Thelo"]
+    # dataset_type = 'prestrf'
+
     #params
     params = {}
     params['binsize'] = 0.02#s = 20ms
@@ -217,6 +223,11 @@ if(__name__=="__main__"):
     # foldername = "../data/strf_data/"
     # cortexside = ["Calyx", "Thelo"]
     # dataset_type = 'strf'
+
+    #dmr dataset
+    foldername = "../data/dmr_data/"
+    cortexside = ["Calyx", "Thelo"]
+    dataset_type = 'dmr'
 
     # #params
     # params = {}
