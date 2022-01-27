@@ -12,6 +12,7 @@ from pytorch_minimize.optim import MinimizeWrapper
 
 from dataloader import load_data, get_eventraster, get_stimulifreq_barebone
 from dataloader_strf import loaddata_withraster_strf
+from dataloader_dmr import loaddata_withraster_dmr
 from utils import raster_fulltoevents, exponentialClass, spectral_resample, numpify
 from plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata,\
     plot_rasterpsth, plot_spectrogram, plot_strf
@@ -25,7 +26,7 @@ class strfdataset(Dataset):
         self.strf_bins = int(self.params['strf_timerange'][1]/self.params['strf_timebinsize'])
         self.hist_bins = int(params['hist_size']/params['strf_timebinsize'])
         spiketimes = spikes_df['timestamps'].to_numpy() # in seconds
-        total_time = np.ceil(spiketimes[-1]+1) #s
+        total_time = np.ceil(spiketimes[-1]+1) #s ##??? why not take the total time from stimuli?
         samples_per_bin = int(params['samplerate']*params['strf_timebinsize']) #num samples per bin
         self.spikes_binned = torch.tensor(self.binned_spikes(params, spiketimes),
                 device=self.device)
@@ -172,9 +173,9 @@ def estimate_strf(foldername, dataset_type, params,  figloc, saveloc):
     minduration = params['minduration']
 
     if(dataset_type == 'strf'):
-        stimuli_df, spikes_df= loaddata_withraster_strf(foldername)#fetch raw data
+        stimuli_df, spikes_df = loaddata_withraster_strf(foldername)#fetch raw data
     else:
-        stimuli_df, spikes_df= load_data(foldername)#fetch raw data
+        stimuli_df, spikes_df = load_data(foldername)#fetch raw data
 
     strf_dataset = strfdataset(params, stimuli_df, spikes_df)
     strf_dataloader = DataLoader(strf_dataset, batch_size=params['batchsize'], shuffle=False,

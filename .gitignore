@@ -3,6 +3,7 @@ data/*
 !data/*.m
 outputs/*
 checkpoints/*
+src/external/*
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

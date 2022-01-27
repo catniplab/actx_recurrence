@@ -80,10 +80,11 @@ def load_data(foldername):
     spike_data_df = pd.DataFrame(spike_data)
     # print("spike data:", spike_data_df)
 
-    stimuli_actual_file = [f for f in fileslist if "DMRstamps.mat" in f][0]
-    stimuli_actual = scipy.io.loadmat(foldername+stimuli_actual_file)['DMRstamps']
-    print(stimuli_actual)
-    print(stimuli_actual.shape)
+    dmr_stamps_file = [f for f in fileslist if "DMRstamps.mat" in f][0]
+    dmr_stamps = scipy.io.loadmat(foldername+dmr_stamps_file)
+    dmr_stamps = stimuli_actual['DMRstamps']
+    # print(dmr_stamps)
+    # print(dmr_stamps.shape)
     # stimuli_raw_data = stimuli_raw['stimuli']
     # stimuli = {'type':[], 'stim_length':[], 'trigger':[], 'datafile':[], 'param':[]}
 
@@ -103,7 +104,7 @@ def load_data(foldername):
     # data_raw = scipy.io.loadmat(foldername+data_raw_file)
     # print(data_raw)
 
-    return stimuli_df, spike_data_df, stimuli_actual
+    return stimuli_df, spike_data_df, dmr_stamps
 
 def multichannel_waveform_plot(recordings):
     fig, ax = plt.subplots(5,5)
@@ -224,7 +225,7 @@ def get_eventraster(stimuli_df, spikes_df, rng, minduration=1.640):
     raster = np.asarray(raster)
     return raster, raster_full
 
-def get_eventraster_onetrial(stimuli_df, spikes_df, rng, minduration=1.640):
+def get_eventraster_onetrial(stimuli_df, spikes_df, dmr_stamps, rng, minduration=1.640):
     ## load the entire data as a single trial
     sample_rate = 10000
     numstimulis = stimuli_df.size
@@ -248,15 +249,40 @@ def get_eventraster_onetrial(stimuli_df, spikes_df, rng, minduration=1.640):
     raster = np.asarray(raster)
     return raster, raster_full, rng
 
+class dmrdataset(Dataset):
+    def __init__(self, params, stimuli_df, spikes_df, dmrstamps):
+        self.params = params
+        self.device = params['device']
+        self.spikes_df = spikes_df
+        self.stimuli_df = stimuli_df
+        self.dmrstamps = dmrstamps
+        self.strf_bins = int(self.params['strf_timerange'][1]/self.params['strf_timebinsize'])
+        self.hist_bins = int(params['hist_size']/params['strf_timebinsize'])
+        total_time = np.ceil(spiketimes[-1]+1) #s ##??? why not take the total time from stimuli?
+        spiketimes = spikes_df['timestamps'].to_numpy() # in seconds
+        samples_per_bin = int(params['samplerate']*params['strf_timebinsize']) #num samples per bin
+        self.spikes_binned = torch.tensor(self.binned_spikes(params, spiketimes),
+                device=self.device)
+        
+        #constants
+        self.spectralmodulation = 0  ## is this correct?
+        self.amplitudeconst = 1 ## is this correct?
+        self.modulationdepth = 2 ## is this correct?
+        self.phase_mu = 0
+        self.phase_sigma = 1
+
+    def create_stimuli_envelope(self, timepoints):
+        
+
+
 def loaddata_withraster_dmr(foldername, rng, minduration):
-    stimuli_df, spike_df, stimuli_actual = load_data(foldername)
-    print(stimuli_df)
+    stimuli_df, spike_df, dmr_stamps = load_data(foldername)
     # rng = [-0.5, 2]
     # rng = [0, 1.640]
     # minduration = 1.640
     # raster, raster_full = sort_eventraster(stimuli_df, spike_df, rng)
     # raster, raster_full = get_eventraster(stimuli_df, spike_df, rng, minduration)
-    raster, raster_full, rng = get_eventraster_onetrial(stimuli_df, spike_df, rng, minduration)
+    raster, raster_full, rng = get_eventraster_onetrial(stimuli_df, spike_df, dmr_stamps, rng, minduration)
     return stimuli_df, spike_df, raster, raster_full, rng
 
 if (__name__ == "__main__"):
