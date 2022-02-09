@@ -1,4 +1,4 @@
-1=200; %Lowest carrier frequency
+f1=200; %Lowest carrier frequency
 f2=48000; %Maximum carrier frequency
 fRD=1.5; %Maximum rate of change for RD
 fFM=3; %Maximum rate of change for FM

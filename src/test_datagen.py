@@ -27,7 +27,7 @@ from plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histd
 np.random.seed(100)
 torch.manual_seed(100)
 
-class TestDataset(Dataset):
+class TestDataset_randompuretone(Dataset):
     def __init__(self, params):
         self.device = params['device']
         self.params = params
@@ -251,6 +251,65 @@ class TestDataset(Dataset):
         Yhist = self.Y[0, idx+self.num_timebins-self.hist_len-1:idx+self.num_timebins-1]
         # print(Yhist.shape)
         return X, Yhist, torch.tensor([0.0]), self.Y[0, idx+self.num_timebins] 
+
+class TestDataset_dmr(Dataset):
+    def __init__(self):
+        self.params = dataset_params()
+        self.dmr_params = self.dmr_params()
+        self.device = params['device']
+        self.seed = self.dmr_params['seed']
+
+    def dataset_params(self):
+        params = {
+            'samplingrate' : 1000,
+            'binsize' : 1, #ms
+            'envduration': 100, #ms
+            'total_time': 300, #s
+            'device' : 'cuda:0'
+        }
+        return params
+
+    def dmr_params(self):
+        dmr_consts = {
+            'f1' : 200,  ##Lowest carrier frequency
+            'f2' : 48000,  ##Maximum carrier frequency
+            'fRD' : 1.5,  ##Maximum rate of change for RD
+            'fFM' : 3,  ##Maximum rate of change for FM
+            'MaxRD' : 4,  ##Maximum ripple density (cycles/oct)
+            'MaxFM' : 50,  ##Maximum temporal modulation rate (Hz)
+            'App' : 30,  ##Peak to peak amplitude of the ripple in dB
+            'Fs' : 200e3,  ##Sampling rate
+            'NCarriersPerOctave' : 100,
+            'NB' : 1,  ##For NB' : 1 genarets DMR
+            'Axis' : 'log',
+            'Block' : 'n',
+            # 'DF' : round(Fs/1000),   ##Sampling rate for envelope single is 3kHz (48kHz/16)
+            'AmpDist' : 'dB',
+            'seed' : 789
+        }
+        M = dmr_consts['Fs']*60*5,  ##5 minute long sounds
+        NS  = ceil(dmr_consts['NCarriersPerOctave']*log2(dmr_consts['f2']/dmr_consts['f1']))  ##Number of sinusoid carriers. ~100 sinusoids / octave
+        dmr_consts['M'] = M
+        dmr_consts['NS'] = NS
+        return dmr_consts
+
+    def create_stimuli(self):
+
+    def create_dmr_envelope(self, ts, xs, ws, prm):
+       ## ideally xs/frequency range will be fixed 
+       Xs = np.tile(xs, (ts.shape[0], 1)).T # F x T; xs~(F,)
+       Ts = np.tile(ts, (xs.shape[0], 1)) # F x T
+       Ws = np.tile(ws, (xs.shape[0], 1)) # F x T
+       Phi = np.ones_like(Xs)*prm['phi']
+       S = (prm['M']/20)*np.sin(2*np.pi*prm['sigma']*Xs + 2*np.pi.*Ws.*Ts + Phi)
+       S_norm = (1/np.sqrt(np.pi*prm['sigmax']*prm['sigmat'])).*np.exp((-Ts^2/2)/(prm['sigmat']^2)).*np.exp((-Xs^2/2)/(prm['sigmax']^2))
+
+       return S .* S_norm
+
+    def __len__(self):
+
+    def __getitem__(self, idx):
+
 
 class strfestimation():
     def __init__(self, params):
