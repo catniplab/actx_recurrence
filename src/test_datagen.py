@@ -264,7 +264,7 @@ class TestDataset_dmr(Dataset):
             'samplingrate' : 1000,
             'binsize' : 1, #ms
             'envduration': 100, #ms
-            'total_time': 300, #s
+            'total_time': 30, #s
             'device' : 'cuda:0'
         }
         return params
@@ -279,7 +279,7 @@ class TestDataset_dmr(Dataset):
             'MaxFM' : 50,  ##Maximum temporal modulation rate (Hz)
             'App' : 30,  ##Peak to peak amplitude of the ripple in dB
             'Fs' : 200e3,  ##Sampling rate
-            'NCarriersPerOctave' : 100,
+            'NCarriersPerOctave' : 10,
             'NB' : 1,  ##For NB' : 1 genarets DMR
             'Axis' : 'log',
             'Block' : 'n',
@@ -293,7 +293,10 @@ class TestDataset_dmr(Dataset):
         dmr_consts['NS'] = NS
         return dmr_consts
 
-    def create_stimuli(self):
+    def create_stimuli_wholetrial(self):
+        phi = np.random.rand(1)*np.pi*2
+        S = np.zeros((self.dmr_consts['NS'],
+            self.params['samplingrate']*self['total_time']/self.params['binsize']))
 
     def create_dmr_envelope(self, ts, xs, ws, prm):
        ## ideally xs/frequency range will be fixed 
