@@ -13,6 +13,7 @@ from pytorch_minimize.optim import MinimizeWrapper
 from scipy.stats import multivariate_normal, poisson
 from scipy.io import loadmat
 from scipy import stats
+from scipy.interpolate import interp1d
 
 import mne
 from mne.decoding import ReceptiveField, TimeDelayingRidge
@@ -254,10 +255,12 @@ class TestDataset_randompuretone(Dataset):
 
 class TestDataset_dmr(Dataset):
     def __init__(self):
-        self.params = dataset_params()
+        self.params = self.dataset_params()
         self.dmr_params = self.dmr_params()
         self.device = params['device']
         self.seed = self.dmr_params['seed']
+        self.total_stimuli = self.create_stimuli_wholetrial()
+        print('min: ', np.min(self.total_stimuli), 'max :', np.max(self.total_stimuli))
 
     def dataset_params(self):
         params = {
@@ -265,7 +268,9 @@ class TestDataset_dmr(Dataset):
             'binsize' : 1, #ms
             'envduration': 100, #ms
             'total_time': 30, #s
-            'device' : 'cuda:0'
+            'device' : 'cuda:0',
+            'omega_sr': 3, #Hz
+            'fomega_sr': 6 #Hz
         }
         return params
 
@@ -277,7 +282,7 @@ class TestDataset_dmr(Dataset):
             'fFM' : 3,  ##Maximum rate of change for FM
             'MaxRD' : 4,  ##Maximum ripple density (cycles/oct)
             'MaxFM' : 50,  ##Maximum temporal modulation rate (Hz)
-            'App' : 30,  ##Peak to peak amplitude of the ripple in dB
+            'App' : 45,  ##Peak to peak amplitude of the ripple in dB
             'Fs' : 200e3,  ##Sampling rate
             'NCarriersPerOctave' : 10,
             'NB' : 1,  ##For NB' : 1 genarets DMR
@@ -285,18 +290,53 @@ class TestDataset_dmr(Dataset):
             'Block' : 'n',
             # 'DF' : round(Fs/1000),   ##Sampling rate for envelope single is 3kHz (48kHz/16)
             'AmpDist' : 'dB',
-            'seed' : 789
+            'seed' : 789,
+            'sigmax' : 3.0,
+            'sigmat' : 3.0,
         }
-        M = dmr_consts['Fs']*60*5,  ##5 minute long sounds
-        NS  = ceil(dmr_consts['NCarriersPerOctave']*log2(dmr_consts['f2']/dmr_consts['f1']))  ##Number of sinusoid carriers. ~100 sinusoids / octave
+        M = dmr_consts['Fs']*60*self.params['total_time']  ##5 minute long sounds
+        NS  = np.ceil(dmr_consts['NCarriersPerOctave']*np.log2(dmr_consts['f2']/dmr_consts['f1']))  ##Number of sinusoid carriers. ~100 sinusoids / octave
         dmr_consts['M'] = M
         dmr_consts['NS'] = NS
         return dmr_consts
 
+    def smooth_walk(self, points, dur):
+        f = interp1d(np.linspace(0, dur, len(points)), np.reshape(points, (points.shape[0], )), "cubic")
+        return f(np.linspace(0, dur, dur * self.params['samplingrate']))
+
     def create_stimuli_wholetrial(self):
         phi = np.random.rand(1)*np.pi*2
-        S = np.zeros((self.dmr_consts['NS'],
-            self.params['samplingrate']*self['total_time']/self.params['binsize']))
+        total_bins = int(self.params['samplingrate']*\
+                self.params['total_time']/self.params['binsize'])
+        freq_maxoct = np.log2(self.dmr_params['f2']/self.dmr_params['f1'])
+
+        S = np.zeros((int(self.dmr_params['NS']), int(self.params['samplingrate']\
+                    *self['total_time']/self.params['binsize'])))
+        Ws_list = self.dmr_params['MaxRD']*np.random.randn(\
+                int(self.params['omega_sr']*self.params['total_time']), 1)
+        Fws_list = self.dmr_params['MaxFM']*np.random.randn(\
+                int(self.params['fomega_sr']*self.params['total_time']), 1)
+
+        ## interpolate the Ws and Fws
+        Ws = self.smooth_walk(Ws_list, self.params['total_time'])
+        Fws = self.smooth_walk(Fws_list, self.params['total_time'])
+
+        ## Frequency vector 
+        xs = np.linspace(0, freq_maxoct, int(self.dmr_params['NS']))
+        ts = np.linspace(0, self.params['total_time'],\
+                self.params['samplingrate']*self.params['total_time'])
+
+        ## calculate the whole stimuli in one go using the interpolated parameters
+        Xs = np.tile(xs, (total_bins, 1)).T # F x T; xs~(F,)
+        Ts = np.tile(ts, (xs.shape[0], 1))
+        Fws = np.tile(Fws, (xs.shape[0], 1)) # F x T
+        Ws = np.tile(Ws, (xs.shape[0], 1)) # F x T
+        S = (self.dmr_params['App']/20)*np.sin(2*np.pi*Ws*Xs + 2*np.pi*Fws*Ts + phi)
+        S_norm = (1/np.sqrt(np.pi*self.dmr_params['sigmax']*self.dmr_params['sigmat']))*\
+                np.exp((-(Ts**2)/2)/(self.dmr_params['sigmat']**2))*\
+                np.exp((-(Xs**2)/2)/(self.dmr_params['sigmax']**2))
+
+        return 0.5 + (S * S_norm)/2
 
     def create_dmr_envelope(self, ts, xs, ws, prm):
        ## ideally xs/frequency range will be fixed 
@@ -304,14 +344,24 @@ class TestDataset_dmr(Dataset):
        Ts = np.tile(ts, (xs.shape[0], 1)) # F x T
        Ws = np.tile(ws, (xs.shape[0], 1)) # F x T
        Phi = np.ones_like(Xs)*prm['phi']
-       S = (prm['M']/20)*np.sin(2*np.pi*prm['sigma']*Xs + 2*np.pi.*Ws.*Ts + Phi)
-       S_norm = (1/np.sqrt(np.pi*prm['sigmax']*prm['sigmat'])).*np.exp((-Ts^2/2)/(prm['sigmat']^2)).*np.exp((-Xs^2/2)/(prm['sigmax']^2))
+       S = (prm['M']/20)*np.sin(2*np.pi*prm['sigma']*Xs + 2*np.pi*Ws*Ts + Phi)
+       S_norm = (1/np.sqrt(np.pi*prm['sigmax']*prm['sigmat']))*np.exp((-Ts^2/2)/(prm['sigmat']^2))*np.exp((-Xs^2/2)/(prm['sigmax']^2))
 
-       return S .* S_norm
+       return S * S_norm
 
     def __len__(self):
+        return self.params['total_time']*1000 - self.params['envduration'] + 1 #time in ms
 
     def __getitem__(self, idx):
+        return 0
+        # return self.total_stimuli[:, idx:idx+self.params['envduration']]
+    
+    def _plot_envelope_(self, figloc):
+        plt.pcolormesh(self.total_stimuli[:, 0:500], vmin=0, vmax=1)
+        plt.xlabel('time (ms)')
+        plt.ylabel('frequency (octaves)')
+        plt.savefig(figloc)
+        plt.close()
 
 
 class strfestimation():
@@ -505,5 +555,10 @@ if(__name__=="__main__"):
 
     figloc = "../outputs/teststrf_{}.pdf".format(dtnow)
     saveloc = "../checkpoints/testweights_{}.h5".format(dtnow)
-    estimate_strf(params, figloc, saveloc)
+    # estimate_strf(params, figloc, saveloc)
     # true_strf = testdata.sample_filter()
+    
+    dmr_test = TestDataset_dmr()
+    figloc = "../outputs/testdmrstim_{}.pdf".format(dtnow)
+    dmr_test._plot_envelope_(figloc)
+
