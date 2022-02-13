@@ -257,9 +257,10 @@ class TestDataset_dmr(Dataset):
     def __init__(self):
         self.params = self.dataset_params()
         self.dmr_params = self.dmr_params()
-        self.device = params['device']
+        self.filter = self.create_filter()
+        # self.device = self.params['device']
         self.seed = self.dmr_params['seed']
-        self.total_stimuli = self.create_stimuli_wholetrial()
+        self.total_stimuli, self.total_response = self.create_stimuli_wholetrial()
         print('min: ', np.min(self.total_stimuli), 'max :', np.max(self.total_stimuli))
 
     def dataset_params(self):
@@ -268,9 +269,10 @@ class TestDataset_dmr(Dataset):
             'binsize' : 1, #ms
             'envduration': 100, #ms
             'total_time': 30, #s
-            'device' : 'cuda:0',
+            # 'device' : 'cuda:0',
             'omega_sr': 3, #Hz
-            'fomega_sr': 6 #Hz
+            'fomega_sr': 6, #Hz
+            'bias' : -1
         }
         return params
 
@@ -298,7 +300,46 @@ class TestDataset_dmr(Dataset):
         NS  = np.ceil(dmr_consts['NCarriersPerOctave']*np.log2(dmr_consts['f2']/dmr_consts['f1']))  ##Number of sinusoid carriers. ~100 sinusoids / octave
         dmr_consts['M'] = M
         dmr_consts['NS'] = NS
+        dmr_consts['freq_bins'] = int(NS)
+        dmr_consts['time_bins'] = int(self.params['envduration']*\
+                (self.params['samplingrate']/1000)*(1/self.params['binsize']))
         return dmr_consts
+    
+    def create_filter(self):
+        timebins = self.dmr_params['time_bins']
+        freq_maxoct = np.log2(self.dmr_params['f2']/self.dmr_params['f1'])
+        freqs = np.linspace(0, freq_maxoct, int(self.dmr_params['NS']))
+        times = np.linspace(0, self.params['envduration'], timebins)
+        grid = np.array(np.meshgrid(times, freqs))
+        # print(grid.shape)
+
+        # We need data to be shaped as n_epochs, n_features, n_times, so swap axes here
+        grid = grid.swapaxes(0, -1).swapaxes(0, 1)
+        # Simulate a temporal receptive field with a Gabor filter
+        means_high = [20, 1.5]
+        means_low = [40, 3]
+        cov = [[10, 0], [0, 3]]
+        gauss_high = multivariate_normal.pdf(grid, means_high, cov)
+        gauss_low = -1 * multivariate_normal.pdf(grid, means_low, cov)
+        # print("min max of gauss high:", np.min(gauss_high), np.max(gauss_high))
+        # print("min max of gauss low:", np.min(gauss_low), np.max(gauss_low))
+        weights = 3*(gauss_high + gauss_low)  # Combine to create the "true" STRF
+        return weights
+
+    def plot_twoenvandfilter(self, env, filt):
+        timebins = self.dmr_params['time_bins']
+        freq_maxoct = np.log2(self.dmr_params['f2']/self.dmr_params['f1'])
+        freqs = np.linspace(0, freq_maxoct, int(self.dmr_params['NS']))
+        times = np.linspace(0, self.params['envduration'], timebins)
+        kwargs = dict(cmap='RdBu_r', shading='gouraud')
+        fig, ax = plt.subplots(2, 1)
+        ax[0].pcolormesh(times, freqs, filt, **kwargs)
+        ax[0].set(title='Simulated STRF', xlabel='Time Lags (s)', ylabel='Frequency (Hz)')
+        ax[1].pcolormesh(times, freqs, env, **kwargs)
+        ax[1].set(title='DMR envelope', xlabel='Time Lags (s)', ylabel='Frequency (Hz)')
+        # plt.setp(ax.get_xticklabels(), rotation=45)
+        plt.autoscale(tight=True)
+        plt.show()
 
     def smooth_walk(self, points, dur):
         f = interp1d(np.linspace(0, dur, len(points)), np.reshape(points, (points.shape[0], )), "cubic")
@@ -311,7 +352,7 @@ class TestDataset_dmr(Dataset):
         freq_maxoct = np.log2(self.dmr_params['f2']/self.dmr_params['f1'])
 
         S = np.zeros((int(self.dmr_params['NS']), int(self.params['samplingrate']\
-                    *self['total_time']/self.params['binsize'])))
+                    *self.params['total_time']/self.params['binsize'])))
         Ws_list = self.dmr_params['MaxRD']*np.random.randn(\
                 int(self.params['omega_sr']*self.params['total_time']), 1)
         Fws_list = self.dmr_params['MaxFM']*np.random.randn(\
@@ -336,25 +377,40 @@ class TestDataset_dmr(Dataset):
                 np.exp((-(Ts**2)/2)/(self.dmr_params['sigmat']**2))*\
                 np.exp((-(Xs**2)/2)/(self.dmr_params['sigmax']**2))
 
-        return 0.5 + (S * S_norm)/2
+        total_stimuli = 1 * (0.5 + (S * S_norm)/2)
+        # print(np.min(total_bins), np.max(total_bins))
+        total_response = []
+        length = int(self.params['total_time']*self.params['samplingrate']/self.params['binsize']) -\
+            int(self.params['envduration']) + 1 #time in ms
+        ## calculating response vector
+        for i in range(0, length):
+            stim_env = total_stimuli[:, i:i+int(self.params['envduration'])]
+            response_linsum = np.sum(self.filter * stim_env) + self.params['bias']
+            # if(i == 40):
+                # print(stim_env)
+                # print(self.filter)
+                # print(stim_env * self.filter)
+                # print(response_linsum)
+                # self.plot_twoenvandfilter(stim_env, self.filter)
+            response = np.random.poisson(lam=np.exp(response_linsum), size=(1))
+            total_response.append(response)
 
-    def create_dmr_envelope(self, ts, xs, ws, prm):
-       ## ideally xs/frequency range will be fixed 
-       Xs = np.tile(xs, (ts.shape[0], 1)).T # F x T; xs~(F,)
-       Ts = np.tile(ts, (xs.shape[0], 1)) # F x T
-       Ws = np.tile(ws, (xs.shape[0], 1)) # F x T
-       Phi = np.ones_like(Xs)*prm['phi']
-       S = (prm['M']/20)*np.sin(2*np.pi*prm['sigma']*Xs + 2*np.pi*Ws*Ts + Phi)
-       S_norm = (1/np.sqrt(np.pi*prm['sigmax']*prm['sigmat']))*np.exp((-Ts^2/2)/(prm['sigmat']^2))*np.exp((-Xs^2/2)/(prm['sigmax']^2))
 
-       return S * S_norm
+        avg_fr = np.sum(total_response)/self.params['total_time']
+        print('firing rate: ', avg_fr)
+        print('max spikes per bin', np.max(total_response))
+        return total_stimuli, total_response
 
     def __len__(self):
-        return self.params['total_time']*1000 - self.params['envduration'] + 1 #time in ms
+        length = int(self.params['total_time']*self.params['samplingrate']/self.params['binsize']) -\
+            int(self.params['envduration']) + 1 #time in ms
+        # print(length)
+        return length
 
     def __getitem__(self, idx):
-        return 0
-        # return self.total_stimuli[:, idx:idx+self.params['envduration']]
+        stim_env = self.total_stimuli[:, int(idx):int(idx)+int(self.params['envduration'])]
+        res = self.total_response[idx]
+        return stim_env, np.array([0.0]), np.array([0.0]), res
     
     def _plot_envelope_(self, figloc):
         plt.pcolormesh(self.total_stimuli[:, 0:500], vmin=0, vmax=1)
@@ -365,21 +421,20 @@ class TestDataset_dmr(Dataset):
 
 
 class strfestimation():
-    def __init__(self, params):
+    def __init__(self, params, params_stim):
         self.params = params
         self.device = params['device']
-        self.frequency_bins = self.params['freq_bins']
-        self.time_bins = self.params['time_bins']
+        self.frequency_bins = params_stim['freq_bins']
+        self.time_bins = params_stim['time_bins']
+
         self.strf_params = torch.tensor(np.random.normal(size=(self.frequency_bins,
             self.time_bins)), requires_grad=True, device = self.device, dtype=torch.float32)
-        # self.strf_params = torch.tensor(np.random.normal(size=(self.frequency_bins,
-            # self.time_bins)), device = self.device, dtype=torch.float32)
         # self.hist_bins = int(params['hist_size']/params['strf_timebinsize'])
         self.history_filter = torch.tensor(np.random.normal(size=(1, self.params['hist_len'])),
                 requires_grad=True, device=self.device, dtype=torch.float32)
         val = np.random.uniform(-5.0, -1.0, 1) 
         self.bias = torch.tensor(val, requires_grad=True, device=self.device, dtype=torch.float)
-        # self.bias = torch.randn(1, device=self.device)
+
         # self.optimizer = torch.optim.LBFGS([self.strf_params, self.history_filter, self.bias], lr=params['lr'])
         self.optimizer_linreg = torch.optim.SGD([self.strf_params, self.bias], lr=params['lr'])
         # minimizer_args = dict(method='Newton-CG', options={'disp':True, 'maxiter':2})
@@ -392,32 +447,27 @@ class strfestimation():
         for ibatch, batchsample in tqdm(enumerate(dataloader)):
             Xin, Yhist, eta, Yt = batchsample
             Yt = Yt.type('torch.FloatTensor')
+            Xin  = Xin.type('torch.FloatTensor')
             self.optimizer_linreg.zero_grad()
             linsum = torch.squeeze(torch.nn.functional.conv2d(Xin.unsqueeze(1),
                 self.strf_params.unsqueeze(0).unsqueeze(1), bias=None)) + self.bias[None,:] 
-            # print("linsum: ", linsum)
             lmbda = torch.exp(linsum)[0,:] ## firing rate
             lmbda = torch.clamp(lmbda, max=1e+3)
-            # print("in lin reg fit:", lmbda, Yt)
             loss = torch.nn.functional.mse_loss(lmbda, Yt) 
-            # print("loss: ", loss)
-            # break
-            
             loss += self.params['strf_reg']*torch.norm(self.strf_params, p=2)
             loss.backward()
             self.optimizer_linreg.step()
             if(ibatch%100==0):
                 print("loss for lin reg fitting : {}".format(loss))
-                # print(self.strf_params, self.bias)
-
 
     def run(self, dataloader):
         epochs = params['epochs']
-
         for e in range(epochs):
             print("Epoch: ", e)
             for ibatch, batchsample in tqdm(enumerate(dataloader)):
                 Xin, Yhist, eta, Yt = batchsample
+                Yt = Yt.type('torch.FloatTensor')
+                Xin  = Xin.type('torch.FloatTensor')
                 # print(Xin.shape, Yt.shape, Yhist.shape)
 
                 def closure():
@@ -430,19 +480,12 @@ class strfestimation():
                         self.strf_params.unsqueeze(0).unsqueeze(1), bias=None)) +\
                         self.bias[None, :] # + eta 
                     
-                    # print("linsum:", linsum)
                     linsumexp = torch.exp(linsum)
-                    # print("is there inf in linsum exp? : ", torch.isinf(linsumexp).any())
-                    if(torch.isinf(linsumexp).any()):
-                        print("linsum :", linsum, linsum.shape)
-                        print("limsumexp: ", linsumexp, linsumexp.shape)
-                        # print("temp1: ", temp, temp.shape)
-                        # print("temp2: ", temp2, temp2.shape)
-                        # print("History: ", Yhist, Yhist.shape)
+                    # if(torch.isinf(linsumexp).any()):
+                        # print("linsum :", linsum, linsum.shape)
+                        # print("limsumexp: ", linsumexp, linsumexp.shape)
 
-                    # print("linsumexp", linsumexp)
                     LLh = Yt*linsum - linsumexp #- (Yt+1).lgamma().exp()
-                    # print("LLH:", LLh)
                     loss = torch.mean(-1*LLh)
                     loss += self.params['strf_reg']*torch.norm(self.strf_params, p=2)
                     # loss += self.params['strf_reg']*torch.norm(self.bias, p=2)
@@ -451,8 +494,8 @@ class strfestimation():
                     # print("loss before:", loss)
                     # print("strf weights:", self.strf_params, self.bias)
 
-                    if(ibatch%200==0):
-                        print("loss at epoch {}, batch {} = {}".format(e, ibatch, loss))
+                    # if(ibatch%200==0):
+                        # print("loss at epoch {}, batch {} = {}".format(e, ibatch, loss))
                     loss.backward()
                     return loss
 
@@ -471,7 +514,7 @@ class strfestimation():
         print("bias: ", numpify(self.bias))
         print("strf weights: ", numpify(self.strf_params))
         freqs = np.linspace(50, 5000, self.frequency_bins)
-        timebinst = np.array(timebins)*(1000.0/self.params['samplerate'])
+        timebinst = np.array(timebins)*(1000.0/self.params['samplingrate'])
         strf_vals = numpify(self.strf_params)
         strf_vals = strf_vals/(np.max(np.absolute(strf_vals)))
 
@@ -490,20 +533,31 @@ class strfestimation():
             self.history_filter = f['hist_weights']
             self.bias = f['bias']
 
-def estimate_strf(params, figloc, saveloc):
-    testdata = TestDataset(params)
-    testdataloader = DataLoader(testdata, batch_size=params['batchsize'], shuffle=False,
-            num_workers=6)
-    strfest = strfestimation(params)
+def estimate_strf(params, figloc, saveloc, params_rc=None):
+    ### multi random chrord 
+    # testdata = TestDataset(params)
+    # testdataloader = DataLoader(testdata, batch_size=params['batchsize'], shuffle=False,
+            # num_workers=6)
+    # strfest = strfestimation(params)
 
     # weights_loc = '../testweights_121621_112447.h5'
     # strfest.load_weights(weights_loc)
     # strfest.plotstrf(figloc)
-
-    strfest.linreg_fit(testdataloader)
+    # strfest.linreg_fit(testdataloader)
     # strfest.run(testdataloader)
     # strfest.plotstrf(figloc)
     # strfest.save_weights(saveloc)
+
+    ### DMR stimuli
+    testdata = TestDataset_dmr()
+    testdataloader = DataLoader(testdata, batch_size=params['batchsize'], shuffle=False,
+            num_workers=6)
+    params.update(testdata.params)
+    dmr_params = testdata.dmr_params
+    strfest = strfestimation(params, dmr_params)
+    strfest.run(testdataloader)
+    strfest.plotstrf(figloc)
+    strfest.save_weights(saveloc)
 
 if(__name__=="__main__"):
     # torch params
@@ -516,49 +570,53 @@ if(__name__=="__main__"):
     dataset_type = 'prestrf'
     #params
     params = {}
+    params_rc = {}
+    tmin, tmax = [0.0, 0.3]
 
-    n_decim = 2
-    # sfreq = 128.0/n_decim
     sfreq=100
-    params['samplerate'] = int(sfreq) #samples per second
-    params['n_decim'] = n_decim
-    params['binsize'] = 0.02#s = 20ms
-    params['freq_bins'] = 20 # total bins
-    params['time_span'] = [0.0, 0.3]
-    tmin, tmax = params['time_span']
-    params['time_bins'] = len(np.arange(np.round(tmin * sfreq), np.round(tmax * sfreq)).astype(int))
-    # print(len(params['time_bins']))
-    params['hist_len'] = 15
+    params_rc = {
+            'samplingrate': int(sfreq),
+            'binsize': 0.01, #s = 10ms
+            'freq_bins': 20, # total bins
+            'time_span' :[tmin, tmax],
+            'tmin': tmin, 
+            'tmax': tmax,
+            'time_bins': len(np.arange(np.round(tmin * sfreq), np.round(tmax *
+                sfreq)).astype(int)),
+            
+            'strf_timebinsize': 0.001,#s = 1ms
+            'strf_timerange': [0, 0.1], #s - 0 to 250ms
+            'delayrange': [1, 30], #units
+            'sampletimespan': [0, 100], #sec
+            'minduration': 1.640,
+            'freqrange': [50, 5000],
+            'freqbins': 20, #hz/bin -- heuristic/random?
+            'hist_size': 0.02, #s = 20ms
+            'max_amp': 100, #db
+    }
 
-    params['strf_timebinsize'] = 0.001#s = 1ms
-    # params['strf_timerange'] = [0, 0.25] #s - 0 to 250ms
-    params['strf_timerange'] = [0, 0.1] #s - 0 to 250ms
-    params['delayrange'] = [1, 30]#units
-    params['sampletimespan'] = [0, 100] #sec
-    params['minduration'] = 1.640
-    params['freqrange'] = [50, 5000]
-    params['freqbins'] = 20 #hz/bin -- heuristic/random?
-    params['hist_size'] = 0.02 #s = 20ms
-    params['max_amp'] = 100 #db
-
-    params['lr'] = 0.01
-    params['device'] = device
-    params['batchsize'] = 128
-    params['epochs'] = 2
-
-    #regularization params
-    params['history_reg'] = 0.001
-    params['strf_reg'] = 1.0
+    params = {
+            'lr': 0.01, 
+            'device': device,
+            'batchsize': 128,
+            'epochs': 2,
+            'hist_len': 15,
+            #regularization params
+            'history_reg': 0.001,
+            'strf_reg': 2.0
+        }
 
     dtnow = datetime.now()
     dtnow = dtnow.strftime("%m%d%y_%H%M%S")
 
     figloc = "../outputs/teststrf_{}.pdf".format(dtnow)
     saveloc = "../checkpoints/testweights_{}.h5".format(dtnow)
-    # estimate_strf(params, figloc, saveloc)
+    # estimate_strf(params, figloc, saveloc, params_rc)
     # true_strf = testdata.sample_filter()
     
-    dmr_test = TestDataset_dmr()
     figloc = "../outputs/testdmrstim_{}.pdf".format(dtnow)
-    dmr_test._plot_envelope_(figloc)
+    saveloc = "../checkpoints/testweights_dmr_{}.h5".format(dtnow)
+    estimate_strf(params, figloc, saveloc, None)
+    # dmr_test = TestDataset_dmr()
+    # dmr_test._plot_envelope_(figloc)
 
