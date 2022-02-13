@@ -603,7 +603,7 @@ if(__name__=="__main__"):
             'hist_len': 15,
             #regularization params
             'history_reg': 0.001,
-            'strf_reg': 2.0
+            'strf_reg': 0.1
         }
 
     dtnow = datetime.now()
