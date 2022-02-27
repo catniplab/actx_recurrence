@@ -1,6 +1,7 @@
 # Custom directories
 data/*
 !data/*.m
+!data/StimulusFiles_DMR/*.m
 outputs/*
 checkpoints/*
 src/external/*
