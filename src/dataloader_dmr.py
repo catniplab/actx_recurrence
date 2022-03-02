@@ -2,6 +2,7 @@ import numpy as np
 import os, pickle, random, math
 import scipy.io, scipy
 import pandas as pd
+import math
 
 import matplotlib.pyplot as plt
 
@@ -81,7 +82,7 @@ def load_data(foldername):
     # print("spike data:", spike_data_df)
 
     dmr_stamps_file = [f for f in fileslist if "DMRstamps.mat" in f][0]
-    dmr_stamps = scipy.io.loadmat(foldername+dmr_stamps_file)
+    stimuli_actual = scipy.io.loadmat(foldername+dmr_stamps_file)
     dmr_stamps = stimuli_actual['DMRstamps']
     # print(dmr_stamps)
     # print(dmr_stamps.shape)
@@ -249,8 +250,8 @@ def get_eventraster_onetrial(stimuli_df, spikes_df, dmr_stamps, rng, minduration
     raster = np.asarray(raster)
     return raster, raster_full, rng
 
-class dmrdataset(Dataset):
-    def __init__(self, params, stimuli_df, spikes_df, dmrstamps):
+class DMR_dataset():
+    def __init__(self, params, stimuli_df, spikes_df, dmrstamps, specdata):
         self.params = params
         self.device = params['device']
         self.spikes_df = spikes_df
@@ -258,11 +259,11 @@ class dmrdataset(Dataset):
         self.dmrstamps = dmrstamps
         self.strf_bins = int(self.params['strf_timerange'][1]/self.params['strf_timebinsize'])
         self.hist_bins = int(params['hist_size']/params['strf_timebinsize'])
-        total_time = np.ceil(spiketimes[-1]+1) #s ##??? why not take the total time from stimuli?
         spiketimes = spikes_df['timestamps'].to_numpy() # in seconds
+        total_time = np.ceil(spiketimes[-1]+1) #s ##??? why not take the total time from stimuli?
         samples_per_bin = int(params['samplerate']*params['strf_timebinsize']) #num samples per bin
-        self.spikes_binned = torch.tensor(self.binned_spikes(params, spiketimes),
-                device=self.device)
+        # self.spikes_binned = torch.tensor(self.binned_spikes(params, spiketimes),
+                # device=self.device)
         
         #constants -- same as used in the Eschebi et al paper
         dmr_consts = {
@@ -282,14 +283,19 @@ class dmrdataset(Dataset):
             'AmpDist' : 'dB',
             'seed' : 789
         }
-        M = dmr_consts['Fs']*60*5,  ##5 minute long sounds
-        NS  = ceil(dmr_consts['NCarriersPerOctave']*log2(dmr_consts['f2']/dmr_consts['f1']))  ##Number of sinusoid carriers. ~100 sinusoids / octave
 
-    def create_stimuli_envelope(self, timepoints):
+        M = dmr_consts['Fs']*60*5,  ##5 minute long sounds
+        self.NS  = math.ceil(dmr_consts['NCarriersPerOctave']*math.log2(dmr_consts['f2']/dmr_consts['f1']))  ##Number of sinusoid carriers. ~100 sinusoids / octave
+        shape = [self.NS, int(specdata.shape[0]/self.NS)]
+        spectrogram = np.reshape(specdata, shape)
+        
+        print(f'spectrogram shape: {spectrogram.shape}; spikes shape: {spiketimes.shape}')
+
+    # def create_stimuli_envelope(self, timepoints):
         
 
 
-def loaddata_withraster_dmr(foldername, rng, minduration):
+def loaddata_withraster_dmr(foldername, rng, minduration, spectrogram_file=None):
     stimuli_df, spike_df, dmr_stamps = load_data(foldername)
     # rng = [-0.5, 2]
     # rng = [0, 1.640]
@@ -297,15 +303,34 @@ def loaddata_withraster_dmr(foldername, rng, minduration):
     # raster, raster_full = sort_eventraster(stimuli_df, spike_df, rng)
     # raster, raster_full = get_eventraster(stimuli_df, spike_df, rng, minduration)
     raster, raster_full, rng = get_eventraster_onetrial(stimuli_df, spike_df, dmr_stamps, rng, minduration)
-    return stimuli_df, spike_df, raster, raster_full, rng
+    specdata = np.fromfile(spectrogram_file, dtype=np.float32)
+    # print(floatdata.shape)
+    return stimuli_df, spike_df, raster, raster_full, rng, dmr_stamps, specdata
 
 if (__name__ == "__main__"):
     # foldername = "..//data/ACx_data_3/ACxCalyx/20200717-xxx999-002-001/"
     foldername = "../data/dmr_data/20211126-xxx999-001-001/"
+    spectrogram_file = "../data/StimulusFiles_DMR/APR21_DMR50ctx.spr"
     # stimuli_df, spike_df = load_data(foldername)
+
+    # ---- parameters ---- #
     rng = [-0.5, 2]
+    device = 'cpu'
+    params = {}
+    params['device'] = device
+    params['strf_timerange'] = [0, 1] #seconds
+    params['strf_timebinsize'] = 0.01 #s = 10ms
+    params['samplerate'] = 10000#samples per second
+    params['hist_size'] = 0.02 #s = 20ms
+
+
     minduration = 10
-    loaddata_withraster_dmr(foldername, rng, minduration)
-    # raster, raster_full = sortnplot_eventraster(stimuli_df, spike_df, minduration)
-    # plot_raster(raster)
+    stimuli_df, spike_df, raster, raster_full, rng, dmr_stamps, specdata =\
+        loaddata_withraster_dmr(foldername, rng, minduration, spectrogram_file)
+    params['rng'] = rng
+
+    dmr_dataset = DMR_dataset(params, stimuli_df, spike_df, dmr_stamps, specdata)
+
+
+
  
