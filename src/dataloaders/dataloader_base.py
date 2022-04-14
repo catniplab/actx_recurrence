@@ -9,7 +9,7 @@ from plotting import plot_raster
 class Data_Loading():
     def __init__(self, PARAMS, foldername):
         self.PARAMS = PARAMS
-        self.data = self.load_data(foldername, PARAMS)
+        self.stimuli_df, self.spike_data_df = self.load_data(foldername, PARAMS)
 
     def load_data(self, foldername, PARAMS):
         """
@@ -105,7 +105,7 @@ class Data_Loading():
         ## select stimuli type
         if 'stimuli_type' in PARAMS:
             stimuli_type = PARAMS['stimuli_type']
-        else
+        else:
             stimuli_type = 'fmsweep'
         sample_rate = PARAMS['sample_rate']
         rng = PARAMS['rng']

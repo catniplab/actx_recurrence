@@ -5,28 +5,27 @@ import pandas as pd
 
 import matplotlib.pyplot as plt
 from plotting import plot_raster
-import Data_Loading
+from dataloader_base import Data_Loading
 
 class Data_Loading_FMSweep(Data_Loading):
     def __init__(self, PARAMS, foldername):
-        self.PARAMS = PARAMS
+        super().__init__(PARAMS, foldername)
 
 
 def loaddata_withraster(foldername, PARAMS):
-    stimuli_df, spike_df = load_data(foldername, PARAMS)
+    fmsdata = Data_Loading_FMSweep(PARAMS, foldername)
 
     # raster, raster_full = get_sorted_event_raster(stimuli_df, spike_df, rng)
-    raster, raster_full = get_event_raster(stimuli_df, spike_df, PARAMS)
-    return stimuli_df, spike_df, raster, raster_full
+    raster, raster_full = fmsdata.get_event_raster(fmsdata.stimuli_df, fmsdata.spike_data_df, PARAMS)
+    return fmsdata.stimuli_df, fmsdata.spike_data_df, raster, raster_full
 
 if (__name__ == "__main__"):
     PARAMS = {
-        rng = [-0.5, 2], 
-        sample_rate = 10000, 
-        minduration = 1.640 #s
+            'rng': [-0.5, 2], 
+            'sample_rate': 10000, 
+            'minduration': 1.640 #s
         }
-    foldername = "..//data/ACx_data_1/ACxCalyx/20080930-002/"
-    stimuli_df, spike_df = load_data(foldername, PARAMS)
-    raster, raster_full = sortnplot_eventraster(stimuli_df, spike_df, PARAMS)
+    foldername = "../../data/prestrf_data/ACx_data_1/ACxCalyx/20080930-002/"
+    stimuli_df, spike_df, raster, raster_full = loaddata_withraster(foldername, PARAMS)
     plot_raster(raster)
  
