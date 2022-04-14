@@ -6,22 +6,29 @@ import math
 
 import matplotlib.pyplot as plt
 from dataloader_base import Data_Loading
+from plotting import plot_raster, plot_spectrogram
 
 class Data_Loading_DMR(Data_Loading):
 
-    def __init__(self, PARAMS, datafolder):
+    def __init__(self, PARAMS, foldername, specfilename = None):
         self.PARAMS = PARAMS
-        self.stimuli_df, self.spike_df, self.dmr_stamps = self.load_data(datafolder, PARAMS)
+        self.stimuli_df, self.spike_data_df, self.dmr_stamps = self.load_data(foldername, PARAMS)
+        self.spectrogram_data = self.load_spectrogram(specfilename)
 
-    def get_loaded_data(self, spectrogram_file=None):
-        raster, raster_full, rng = get_event_raster_one_trial(self.stimuli_df, self.spike_df,\
-                self.PARAMS)
-        # reading the spectrogram file
+    def load_spectrogram(self, spectrogram_file = None):
         if(spectrogram_file is not None):
             specdata = np.fromfile(spectrogram_file, dtype=np.float32)
+            specdata = self.reshape_spectrogram(specdata)
         else:
             specdata = None
-        return self.stimuli_df, self.spike_df, raster, raster_full, rng, self.dmr_stamps, specdata
+        return specdata
+
+    def reshape_spectrogram(self, specdata):
+        spectrshape = [self.PARAMS['num_freqs'], specdata.shape[0]//self.PARAMS['num_freqs']]
+        # spectrshape = [specdata.shape[0]//self.PARAMS['num_freqs'], self.PARAMS['num_freqs']]
+        # specdata = np.transpose(np.reshape(specdata, spectrshape))
+        specdata = np.reshape(specdata, spectrshape)
+        return specdata
 
     def load_data(self, foldername, PARAMS):
         """
@@ -104,21 +111,32 @@ class Data_Loading_DMR(Data_Loading):
 
         stimuli_df = pd.DataFrame(stimuli)
 
-        ## opening -tt_spikes.dat
-        spikes_raw_file = [f for f in fileslist if "spikesnormalized.mat" in f][0]
-        spikes_raw = scipy.io.loadmat(foldername+spikes_raw_file)
+        ## opening normalized spiking file in other naming format of some dataset
+        # spikes_raw_file = [f for f in fileslist if "spikesnormalized.mat" in f][0]
+        # spikes_raw = scipy.io.loadmat(foldername+spikes_raw_file)
+        # spike_data = {'timestamps':[]}
+        # for i in range(spikes_raw['spikesout'].shape[0]):
+            # spike_data['timestamps'].append(spikes_raw['spikesout'][i][0]/sample_rate)
+            # # spike_data['waveforms'].append(spikes_raw['waveforms'][i])
+            # # spike_data['waveforms_raw'].append(spikes_raw['waveforms_raw'][i])
 
-        spike_data = {'timestamps':[]}
-        for i in range(spikes_raw['spikesout'].shape[0]):
-            spike_data['timestamps'].append(spikes_raw['spikesout'][i][0])
-            # spike_data['waveforms'].append(spikes_raw['waveforms'][i])
-            # spike_data['waveforms_raw'].append(spikes_raw['waveforms_raw'][i])
+        ## opening -tt_spikes.dat which gives us the raw spiking data 
+        spikes_raw_file = [f for f in fileslist if "-tt_spikes.dat" in f][0]
+        spikes_raw = scipy.io.loadmat(foldername+spikes_raw_file)
+        spike_data = {'timestamps':[], 'waveforms':[], 'waveforms_raw':[]}
+        for i in range(spikes_raw['timestamps'].shape[0]):
+            spike_data['timestamps'].append(spikes_raw['timestamps'][i][0]/sample_rate)
+            spike_data['waveforms'].append(spikes_raw['waveforms'][i])
+            spike_data['waveforms_raw'].append(spikes_raw['waveforms_raw'][i])
+
 
         spike_data_df = pd.DataFrame(spike_data)
 
-        dmr_stamps_file = [f for f in fileslist if "DMRstamps.mat" in f][0]
-        stimuli_actual = scipy.io.loadmat(foldername+dmr_stamps_file)
-        dmr_stamps = stimuli_actual['DMRstamps']
+        # dmr_stamps_file = [f for f in fileslist if "DMRstamps.mat" in f][0]
+        # stimuli_actual = scipy.io.loadmat(foldername+dmr_stamps_file)
+        # dmr_stamps = stimuli_actual['DMRstamps']
+
+        dmr_stamps = None
 
         ## opening -data.dat file
         # data_raw_file = [f for f in fileslist if "-data.dat" in f][0]
@@ -170,10 +188,17 @@ class DMR_dataset():
 
     # def create_stimuli_envelope(self, timepoints):
 
+
+def loaddata_withraster(foldername, PARAMS, specfilename):
+    dmrdata = Data_Loading_DMR(PARAMS, foldername, specfilename)
+
+    # raster, raster_full = get_sorted_event_raster(stimuli_df, spike_df, rng)
+    raster, raster_full = dmrdata.get_event_raster(dmrdata.stimuli_df, dmrdata.spike_data_df, PARAMS)
+    return dmrdata.stimuli_df, dmrdata.spike_data_df, dmrdata.spectrogram_data, raster, raster_full
+
 if (__name__ == "__main__"):
-    # foldername = "..//data/ACx_data_3/ACxCalyx/20200717-xxx999-002-001/"
-    foldername = "../data/dmr_data/20211126-xxx999-001-001/"
-    spectrogram_file = "../data/StimulusFiles_DMR/APR21_DMR50ctx.spr"
+    foldername = "../../data/dmr_data2/20220120-xxx999-006-001/"
+    spectrogram_file = "../../data/StimulusFiles_DMR/APR21_DMR50ctx.spr"
     # stimuli_df, spike_df = load_data(foldername)
 
     # ---- parameters ---- #
@@ -186,15 +211,23 @@ if (__name__ == "__main__"):
     PARAMS['samplerate'] = 10000#samples per second
     PARAMS['hist_size'] = 0.02 #s = 20ms
     PARAMS['rng'] = rng
+    PARAMS['sample_rate'] = 10000
+    PARAMS['minduration'] = 1.640
+    PARAMS['num_freqs'] = 80 # log2(48000/200) + 1
 
+    # stimuli_df, spike_df, raster, raster_full, rng, dmr_stamps, specdata =\
+        # loaddata_withraster_dmr(foldername, rng, minduration, spectrogram_file)
 
-    minduration = 10
-    stimuli_df, spike_df, raster, raster_full, rng, dmr_stamps, specdata =\
-        loaddata_withraster_dmr(foldername, rng, minduration, spectrogram_file)
+    # params['rng'] = rng
+    # dmr_dataset = DMR_dataset(params, stimuli_df, spike_df, dmr_stamps, specdata)
 
-    params['rng'] = rng
+    stimuli_df, spike_df, spectrogram, raster, raster_full = loaddata_withraster(foldername, PARAMS,
+            spectrogram_file)
 
-    dmr_dataset = DMR_dataset(params, stimuli_df, spike_df, dmr_stamps, specdata)
+    # plot_raster(raster)
+    print(f'spectrogram info -- shape: {spectrogram.shape},  min: {np.min(spectrogram)},\
+            max: {np.max(spectrogram)}')
+    # plot_spectrogram(spectrogram[:, 30000:31000], "../../outputs/spectrogram_test.pdf")
 
 
 

@@ -5,12 +5,11 @@ import pandas as pd
 
 import matplotlib.pyplot as plt
 from dataloader_base import Data_Loading
+from plotting import plot_raster
 
 class Data_Loading_STRF(Data_Loading):
-
-    def __init__(self, PARAMS, datafolder):
-        self.PARAMS = PARAMS
-        self.stimuli_df, self.spike_df = self.load_data(datafolder, PARAMS)
+    def __init__(self, PARAMS, foldername):
+        super().__init__(PARAMS, foldername)
 
     def get_loaded_data(self):
         raster, raster_full, rng = get_event_raster_one_trial(self.stimuli_df, self.spike_df,\
@@ -205,20 +204,20 @@ class Data_Loading_STRF(Data_Loading):
         # return raster, raster_full
 
 
-def loaddata_withraster_strf(foldername, PARAMS):
-    stimuli_df, spike_df = load_data(foldername, PARAMS)
-    raster, raster_full, rng = get_event_raster_one_trial(stimuli_df, spike_df, PARAMS)
-    return stimuli_df, spike_df, raster, raster_full, rng
+def loaddata_withraster(foldername, PARAMS):
+    fmsdata = Data_Loading_STRF(PARAMS, foldername)
+
+    # raster, raster_full = get_sorted_event_raster(stimuli_df, spike_df, rng)
+    raster, raster_full = fmsdata.get_event_raster(fmsdata.stimuli_df, fmsdata.spike_data_df, PARAMS)
+    return fmsdata.stimuli_df, fmsdata.spike_data_df, raster, raster_full
 
 if (__name__ == "__main__"):
-    # foldername = "..//data/ACx_data_3/ACxCalyx/20200717-xxx999-002-001/"
-    foldername = "..//data/ACx_data_1/ACxCalyx/20080930-002/"
     PARAMS = {
-        rng = [-0.5, 2], 
-        sample_rate = 10000, 
-        minduration = 1.640 #s
-    }
-    stimuli_df, spike_df = load_data(foldername, PARAMS)
-    raster, raster_full = get_sorted_event_raster(stimuli_df, spike_df, PARAMS)
+            'rng': [-0.5, 2], 
+            'sample_rate': 10000, 
+            'minduration': 1.640 #s
+        }
+    foldername = "../../data/strf_data/20210825-xxx999-002-001/"
+    stimuli_df, spike_df, raster, raster_full = loaddata_withraster(foldername, PARAMS)
     plot_raster(raster)
  
