@@ -7,8 +7,12 @@ from scipy.stats import norm, multivariate_normal
 
 from dich_gauss.dichot_gauss import DichotGauss 
 from dich_gauss.optim_dichot_gauss import get_bivargauss_cdf, find_root_bisection
-from dataloader import loaddata_withraster, get_stimuli_spectrogram
-from dataloader_strf import loaddata_withraster_strf
+
+# from dataloader import loaddata_withraster, get_stimuli_spectrogram
+# from dataloader_strf import loaddata_withraster_strf
+
+from dataloaders.dataloader_fmsweep import Data_Loading_FMSweep, loaddata_withraster
+
 from utils import raster_fulltoevents, calculate_meanfiringrate, exponentialClass,\
     measure_isi, measure_psth, calculate_fanofactor, calculate_coeffvar, spectral_resample
 from plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata,\

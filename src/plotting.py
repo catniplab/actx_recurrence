@@ -33,7 +33,8 @@ def plot_strf(strfweights, historyweights, timebinst, freqbins, timebin, freqs, 
     plt.close()
 
 def plot_spectrogram(spectrogram, figloc):
-    plt.pcolormesh(np.transpose(spectrogram))
+    # plt.pcolormesh(np.transpose(spectrogram))
+    plt.pcolormesh(spectrogram)
     plt.xlabel('time')
     plt.ylabel('frequency')
     plt.savefig(figloc)
@@ -183,3 +184,16 @@ def multichannel_waveform_plot(recordings):
             # ax[i,j].xlabel("timestamp")
             # ax[i,j].ylabel("voltage")
     plt.show()
+
+def plot_filter(weights, delays_sec, freqs, params):
+    print("weights:", weights.shape)
+    kwargs = dict(vmax=np.abs(weights).max(), vmin=-np.abs(weights).max(),
+                  cmap='RdBu_r', shading='gouraud')
+    fig, ax = plt.subplots()
+    ax.pcolormesh(delays_sec, freqs, weights, **kwargs)
+    ax.set(title='Simulated STRF', xlabel='Time Lags (s)', ylabel='Frequency (Hz)')
+    plt.setp(ax.get_xticklabels(), rotation=45)
+    plt.autoscale(tight=True)
+    # TODO: add a figure saving code
+    plt.show()
+
