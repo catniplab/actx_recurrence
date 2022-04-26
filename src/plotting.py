@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib as mpl
 import os, pickle
 from scipy.interpolate import make_interp_spline
 from scipy.ndimage import gaussian_filter1d
@@ -16,32 +17,49 @@ def plot_psd(yf, xf, path):
 def plot_psds(psds, freqs, labels, params, figloc):
     left_idx = [i for i,x in enumerate(labels) if x=="Calyx"] 
     right_idx = [i for i,x in enumerate(labels) if x=="Thelo"] 
-    fig = plt.figure(figsize=(16, 8))
+    fig = plt.figure(figsize=(16, 6))
     ax = fig.add_subplot(121)
     ax2 = fig.add_subplot(122)
     stagger_ct = [0,0]
+    stg_frac = 0.2
+    norm = mpl.colors.Normalize(vmin=0, vmax=50)
+    cmap = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.Blues)
+    cmap.set_array([])
+    cmap2 = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.YlOrRd)
+    cmap2.set_array([])
+    xticks = [i for i in range(0, int(freqs[0][-1]+4), 5)]
 
     for i in range(len(left_idx)):
-        # if i==0:
-            # psd = psds[left_idx[i]] + 20 - i
-        # else:
-            # psd = psds[left_idx[i]]/4 + 20 - i
-        ax.plot(freqs[left_idx[i]], psds[left_idx[i]], color="#4f94c4", alpha=0.6)
-        # ax.fill_between(freqs[i], (20 - i) *
-            # np.ones(freqs[i].size), psds[i], alpha=0.3)
-            # color=cmap(ell[t]))
+        stg_val_x = np.min(freqs[left_idx[i]]) * stg_frac
+        stg_val_y = np.mean(psds[left_idx[i]]) * stg_frac
+        # stagger_ct[0]+=stg_val_x
+        stagger_ct[0]+= 0.25
+        stagger_ct[1]+=stg_val_y
+        ax.plot(freqs[left_idx[i]]+stagger_ct[0], psds[left_idx[i]]+stagger_ct[1],\
+                color="#4f94c4", alpha=0.6)
+        ax.fill_between(freqs[left_idx[i]]+stagger_ct[0],\
+                stagger_ct[1] * np.ones(freqs[left_idx[i]].size),\
+                psds[left_idx[i]]+stagger_ct[1], alpha=0.15, color=cmap.to_rgba(i+1))
     ax.set_xlabel('frequencies')
     ax.set_ylabel('power spectrum density')
+    ax.set_xticks(xticks)
     ax.set_title('left hemisphere')
 
+    stagger_ct = [0,0]
     for i in range(len(right_idx)):
-        if i==0:
-            psd = psds[right_idx[i]] + 20 - i
-        else:
-            psd = psds[right_idx[i]]/4 + 20 - i
-        ax2.plot(freqs[right_idx[i]], psd, color="#4f94c4", alpha=0.6)
+        stg_val_x = np.min(freqs[right_idx[i]]) * stg_frac
+        stg_val_y = np.mean(psds[right_idx[i]]) * stg_frac
+        # stagger_ct[0]+=stg_val_x
+        stagger_ct[0]+= 0.25
+        stagger_ct[1]+=stg_val_y
+        ax2.plot(freqs[right_idx[i]]+stagger_ct[0], psds[right_idx[i]]+stagger_ct[1],\
+                color="#ff851a", alpha=0.6)
+        ax2.fill_between(freqs[right_idx[i]]+stagger_ct[0],\
+                stagger_ct[1] * np.ones(freqs[right_idx[i]].size),\
+                psds[right_idx[i]]+stagger_ct[1], alpha=0.15, color=cmap2.to_rgba(i+1))
     ax2.set_xlabel('frequencies')
     ax2.set_ylabel('power spectrum density')
+    ax2.set_xticks(xticks)
     ax2.set_title('right hemisphere')
 
     # for t in range(T_plot):
