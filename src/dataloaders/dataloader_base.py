@@ -67,6 +67,19 @@ class Data_Loading():
                 stimuli_param['stop_frequency'] = stimuli_raw_data[i][0]\
                     ['param']['stop_frequency'][0][0][0][0]
 
+            # for clicktrain data
+            elif(stimuli_raw_data[i]['type'][0][0] == 'clicktrain'):
+                stimuli_param = {'amplitude':[], 'ramp':[], 'duration':[], 'next':[], 'start':[],
+                        'isi':[], 'clickduration':[], 'nclicks':[]}
+                stimuli_param['amplitude'] = stimuli_raw_data[i][0]['param']['amplitude'][0][0][0][0]
+                stimuli_param['ramp'] = stimuli_raw_data[i][0]['param']['ramp'][0][0][0][0]
+                stimuli_param['duration'] = stimuli_raw_data[i][0]['param']['duration'][0][0][0][0]
+                stimuli_param['next'] = stimuli_raw_data[i][0]['param']['next'][0][0][0][0]
+                stimuli_param['start'] = stimuli_raw_data[i][0]['param']['start'][0][0][0][0]
+                stimuli_param['isi'] = stimuli_raw_data[i][0]['param']['isi'][0][0][0][0]
+                stimuli_param['clickduration'] = stimuli_raw_data[i][0]['param']['clickduration'][0][0][0][0]
+                stimuli_param['nclicks'] = stimuli_raw_data[i][0]['param']['nclicks'][0][0][0][0]
+
             stimuli['param'].append(stimuli_param)
 
         # raw stimuli dataframe
@@ -160,6 +173,7 @@ class Data_Loading():
         rng = PARAMS['rng']
         numstimulis = stimuli_df.size
         triggertimes = []
+        del_time = 0.001 #s
 
         # find all trials which are minduration long
         for i in range(numstimulis-1):
@@ -172,8 +186,10 @@ class Data_Loading():
             # if((stimuli_next_trigger - (stimuli_trigger+stimuli_duration))>minduration):
                 # triggertimes.append([stimuli_trigger+stimuli_duration,
                     # stimuli_trigger+stimuli_duration+minduration])
-            if((stimuli_next_trigger - stimuli_trigger)>minduration):
-                triggertimes.append([stimuli_trigger, stimuli_trigger+minduration])
+            if((stimuli_next_trigger - stimuli_trigger)>minduration+del_time):
+                # triggertimes.append([stimuli_trigger, stimuli_trigger+minduration])
+                triggertimes.append([stimuli_next_trigger-minduration-del_time,\
+                    stimuli_next_trigger-del_time])
 
         n_triggers = len(triggertimes)
         start_samples = round(rng[0]*sample_rate)
@@ -188,10 +204,12 @@ class Data_Loading():
             spikes = spikes['timestamps'].to_numpy()
             if(spikes.shape[0] > 0):
                 # raster.append(spike_pos/sample_rate)
-                spike_pos = np.floor((spikes - triggertimes[i][0][0])*sample_rate) + 1\
+                spike_pos = np.floor((spikes - triggertimes[i][0][0])*sample_rate)\
                         - start_samples
+                if((spike_pos>=n_samples).any()):
+                    print(spike_pos, start_samples, triggertimes[i][0][0], spikes)
                 raster_full[i, spike_pos.astype(int)] = 1
-                spike_pos = np.floor((spikes - triggertimes[i][0][0])*sample_rate) + 1
+                spike_pos = np.floor((spikes - triggertimes[i][0][0])*sample_rate) 
                 raster.append(spike_pos/sample_rate)
             else:
                 raster.append([])

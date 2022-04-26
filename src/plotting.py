@@ -7,6 +7,66 @@ import seaborn
 
 from utils import exponentialClass
 
+def plot_psd(yf, xf, path):
+    plt.plot(xf, yf)
+    plt.grid()
+    plt.savefig(path)
+    plt.close()
+
+def plot_psds(psds, freqs, labels, params, figloc):
+    left_idx = [i for i,x in enumerate(labels) if x=="Calyx"] 
+    right_idx = [i for i,x in enumerate(labels) if x=="Thelo"] 
+    fig = plt.figure(figsize=(16, 8))
+    ax = fig.add_subplot(121)
+    ax2 = fig.add_subplot(122)
+    stagger_ct = [0,0]
+
+    for i in range(len(left_idx)):
+        # if i==0:
+            # psd = psds[left_idx[i]] + 20 - i
+        # else:
+            # psd = psds[left_idx[i]]/4 + 20 - i
+        ax.plot(freqs[left_idx[i]], psds[left_idx[i]], color="#4f94c4", alpha=0.6)
+        # ax.fill_between(freqs[i], (20 - i) *
+            # np.ones(freqs[i].size), psds[i], alpha=0.3)
+            # color=cmap(ell[t]))
+    ax.set_xlabel('frequencies')
+    ax.set_ylabel('power spectrum density')
+    ax.set_title('left hemisphere')
+
+    for i in range(len(right_idx)):
+        if i==0:
+            psd = psds[right_idx[i]] + 20 - i
+        else:
+            psd = psds[right_idx[i]]/4 + 20 - i
+        ax2.plot(freqs[right_idx[i]], psd, color="#4f94c4", alpha=0.6)
+    ax2.set_xlabel('frequencies')
+    ax2.set_ylabel('power spectrum density')
+    ax2.set_title('right hemisphere')
+
+    # for t in range(T_plot):
+        # if t == 0:
+            # temp = densities[t] + 19 - t
+        # else:
+            # temp = densities[t] / 4 + 19 - t
+        # ax.plot(x_range, temp, color=cmap(ell[t]))
+        # ax.scatter(xt[t], 19 - t, color=cmap(ell[t]))
+        # ax.fill_between(x_range, (19 - t) *
+            # np.ones(x_range.size), temp, alpha=0.3,
+            # color=cmap(ell[t]))
+    # ax.plot(xt[:T_plot], np.arange(T_plot)[::-1],
+        # color='slategray', linewidth=3, alpha=0.5)
+    # ax.set_ylabel('Time', fontsize=16)
+    # ax.set_yticks([i for i in range(T_plot)])
+    # ax.set_yticklabels([str(i) for i in
+        # range(T_plot)][::-1])
+    # ax.set_xlabel("x", fontsize=16)
+    # ax.set_title("Evolution of Markov chain", fontsize=24)
+
+    # save the plot
+    # fig.tight_layout()
+    fig.savefig(figloc, dpi=120)
+
 def plot_strf(strfweights, historyweights, timebinst, freqbins, timebin, freqs, figloc):
     fig, ax = plt.subplots(2, 1, figsize=(20, 10))
     # print(strfweights.shape)
