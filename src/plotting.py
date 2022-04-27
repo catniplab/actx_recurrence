@@ -1,11 +1,11 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib as mpl
+from mpl_toolkits.mplot3d import Axes3D
 import os, pickle
 from scipy.interpolate import make_interp_spline
 from scipy.ndimage import gaussian_filter1d
-import seaborn
-
+from matplotlib.collections import PolyCollection
 from utils import exponentialClass
 
 def plot_psd(yf, xf, path):
@@ -13,6 +13,49 @@ def plot_psd(yf, xf, path):
     plt.grid()
     plt.savefig(path)
     plt.close()
+
+def plot_psds_3d(psds, freqs, labels, params, figloc):
+    left_idx = [i for i,x in enumerate(labels) if\
+            (x=="Calyx" and not np.isnan(np.array(psds[i])).any())] 
+    right_idx = [i for i,x in enumerate(labels) if\
+            (x=="Thelo" and not np.isnan(np.array(psds[i])).any())] 
+
+    fig = plt.figure(figsize=(16, 6))
+    ax = fig.add_subplot(121, projection='3d')
+    ax2 = fig.add_subplot(122, projection='3d')
+
+    norm = mpl.colors.Normalize(vmin=0, vmax=50)
+    cmap = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.Blues)
+    cmap.set_array([])
+    cmap2 = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.YlOrRd)
+    cmap2.set_array([])
+
+    zs = []
+    verts=[]
+    fcolors = []
+    print(len(freqs), freqs[0].shape)
+    print(len(psds), psds[0].shape)
+    for i in range(len(left_idx)):
+        # zs.append(i)
+        # verts.append(list(zip(freqs[left_idx[i]], psds[left_idx[i]])))
+        # fcolors.append(cmap.to_rgba(80))
+        ax.plot(freqs[left_idx[i]], psds[left_idx[i]], zs=i, zdir='z', alpha=0.6,\
+                color=cmap.to_rgba(30 + 2*i))
+    # poly = PolyCollection(verts, facecolors=fcolors)
+    # poly.set_alpha(0.5)
+    # ax.add_collection3d(poly, zs=zs)
+
+    ax.set_xlabel('frequencies (Hz)')
+    ax.set_ylabel('power spectrum density (dB)')
+    ax.set_zlabel('Neuron Number')
+    ax.set_zlim3d(0, len(labels)+1)
+    ax.set_ylim3d(-20, 0)
+    ax.set_xlim3d(0, 30)
+    # ax.set_xticks(xticks)
+    ax.set_title('left hemisphere')
+
+    plt.show()
+
 
 def plot_psds(psds, freqs, labels, params, figloc):
     left_idx = [i for i,x in enumerate(labels) if x=="Calyx"] 
@@ -35,13 +78,14 @@ def plot_psds(psds, freqs, labels, params, figloc):
         # stagger_ct[0]+=stg_val_x
         stagger_ct[0]+= 0.25
         stagger_ct[1]+=stg_val_y
-        ax.plot(freqs[left_idx[i]]+stagger_ct[0], psds[left_idx[i]]+stagger_ct[1],\
+        log_psd = psds[left_idx[i]]+stagger_ct[1]
+        ax.plot(freqs[left_idx[i]]+stagger_ct[0], log_psd,\
                 color="#4f94c4", alpha=0.6)
         ax.fill_between(freqs[left_idx[i]]+stagger_ct[0],\
                 stagger_ct[1] * np.ones(freqs[left_idx[i]].size),\
-                psds[left_idx[i]]+stagger_ct[1], alpha=0.15, color=cmap.to_rgba(i+1))
-    ax.set_xlabel('frequencies')
-    ax.set_ylabel('power spectrum density')
+                log_psd, alpha=0.3, color=cmap.to_rgba(i+1))
+    ax.set_xlabel('frequencies (Hz)')
+    ax.set_ylabel('power spectrum density (dB)')
     ax.set_xticks(xticks)
     ax.set_title('left hemisphere')
 
@@ -56,30 +100,11 @@ def plot_psds(psds, freqs, labels, params, figloc):
                 color="#ff851a", alpha=0.6)
         ax2.fill_between(freqs[right_idx[i]]+stagger_ct[0],\
                 stagger_ct[1] * np.ones(freqs[right_idx[i]].size),\
-                psds[right_idx[i]]+stagger_ct[1], alpha=0.15, color=cmap2.to_rgba(i+1))
-    ax2.set_xlabel('frequencies')
-    ax2.set_ylabel('power spectrum density')
+                psds[right_idx[i]]+stagger_ct[1], alpha=0.3, color=cmap2.to_rgba(i+1))
+    ax2.set_xlabel('frequencies (Hz)')
+    ax2.set_ylabel('power spectrum density (dB)')
     ax2.set_xticks(xticks)
     ax2.set_title('right hemisphere')
-
-    # for t in range(T_plot):
-        # if t == 0:
-            # temp = densities[t] + 19 - t
-        # else:
-            # temp = densities[t] / 4 + 19 - t
-        # ax.plot(x_range, temp, color=cmap(ell[t]))
-        # ax.scatter(xt[t], 19 - t, color=cmap(ell[t]))
-        # ax.fill_between(x_range, (19 - t) *
-            # np.ones(x_range.size), temp, alpha=0.3,
-            # color=cmap(ell[t]))
-    # ax.plot(xt[:T_plot], np.arange(T_plot)[::-1],
-        # color='slategray', linewidth=3, alpha=0.5)
-    # ax.set_ylabel('Time', fontsize=16)
-    # ax.set_yticks([i for i in range(T_plot)])
-    # ax.set_yticklabels([str(i) for i in
-        # range(T_plot)][::-1])
-    # ax.set_xlabel("x", fontsize=16)
-    # ax.set_title("Evolution of Markov chain", fontsize=24)
 
     # save the plot
     # fig.tight_layout()

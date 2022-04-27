@@ -49,8 +49,9 @@ def check_tau_consistency(data_pd):
     righthem_tau_pruned_stderror = righthem_tau_prunedstd/np.sqrt(righthem_idx.shape[0])
 
     print(f'left hemi -- pruned mean: {lefthem_tau_prunedmean}, std error of mean:\
-                {lefthem_tau_pruned_stderror};\n Right hemi -- pruned mean:\
-                {righthem_tau_prunedmean}, std err of mean: {righthem_tau_pruned_stderror}')
+                {lefthem_tau_pruned_stderror}, n = {lefthem_idx_pruned.shape[0]}')
+    print(f'Right hemi -- pruned mean: {righthem_tau_prunedmean}, std err of mean:\
+            {righthem_tau_pruned_stderror}, n = {righthem_idx_pruned.shape[0]}')
 
 def find_var_from_logvar(logvar, data):
     # form found using the moment generators
@@ -99,10 +100,11 @@ def check_fr_tau_corr(data_pd):
     # linear regression between fr and time constant (not log)
     taus = data_pd_notnan['tau_corrected'].values
     sigma_taus = find_var_from_logvar(data_pd_notnan['var_logtau'].values, data_pd_notnan)
-    print('sigma taus: ', sigma_taus)
+    # print('sigma taus: ', sigma_taus)
     data_pd_notnan['var_tau'] = sigma_taus
     # data_pd_notnan.insert(16, 'var_tau', sigma_taus)
     weights_taus = np.reciprocal(sigma_taus)
+    # weights_taus = np.reciprocal(data_pd_notnan['var_logtau'].values)
     res_taus = LinearRegression().fit(firing_rates.reshape(-1,1), taus.reshape(-1,1), weights_taus)
     r2score_taus = res.score(firing_rates.reshape(-1,1), taus.reshape(-1,1), weights_taus)
     print(f' scikit: FR vs Taus -- slope: {res_taus.coef_[0][0]}, intercept: {res_taus.intercept_}')

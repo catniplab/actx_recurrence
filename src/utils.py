@@ -59,6 +59,13 @@ class exponentialClass:
     def exponential_func(self, t, tau, a):
         return a * np.exp(-t/tau) + self.b
 
+class double_exponentialClass:
+    def __init__(self):
+        self.b = 0
+
+    def exponential_func(self, t, tau, a, c, d):
+        return a * np.exp(-t/tau) + self.b + c * np.exp(-d*t) 
+
 def measure_isi(raster):
     isi_list = []
     isis_list = []
@@ -80,6 +87,115 @@ def measure_psth(raster_full, binsizet, period, samplerate):
         spikecount = np.sum(binslice)
         normspikesperbin.append(spikecount/(raster_full.shape[0]*binsize))
     return normspikesperbin
+
+def resample(raster, raster_full, binsize, og_samplerate):
+    newbinsize = binsize*og_samplerate#new sample bin size in previous sample rate
+    new_raster_full = np.zeros((raster_full.shape[0], raster_full.shape[1]//int(newbinsize))) 
+    # newbinsize = og_samplerate//binsize
+    new_raster = []
+    for i in range(new_raster_full.shape[0]):
+        new_raster_tmp = []
+        for j in range(len(raster[i])):
+            new_raster_tmp.append(raster[i][j])
+            new_raster_full[i, ((new_raster_tmp[j]*og_samplerate)/newbinsize).astype(int)]=1
+        new_raster.append(new_raster_tmp)
+    return new_raster, new_raster_full
+
+def leastsquares_fit(autocor, delay, b):
+    xdata = np.array(delay)
+    exc_int = exponentialClass()
+    exc_int.b = b
+    optval, optcov = curve_fit(exc_int.exponential_func, xdata, autocor) 
+    return optval
+
+def leastsquares_fit_doubleexp(autocor, delay, b):
+    xdata = np.array(delay)
+    exc_int = double_exponentialClass()
+    exc_int.b = b
+    optval, optcov = curve_fit(exc_int.exponential_func, xdata, autocor) 
+    return optval
+
+class dichotomizedgaussian_surrogate():
+    def __init__(self, mfr, autocorr, data, delay):
+        self.data = data
+        self.gauss_mean = self.calculate_gmean(mfr) #recheck mfr formulation in the code
+        self.gauss_cov = self.calculate_gcov(mfr, autocorr, delay)
+        # print("gauss mean and cov", self.gauss_mean, self.gauss_corr)
+
+    def calculate_gmean(self, mfr):
+        # mfr[mfr==0.0]+=1e-4
+        return norm.ppf(mfr)
+
+    def calculate_gcov(self, mfr, autocorr, delay):
+        gauss_cov = np.zeros(len(delay)+1)
+        for d in range(len(delay)):
+            data_cov = np.eye(2)
+            data_cov[1,0], data_cov[0,1] = autocorr[d], autocorr[d]
+            x = find_root_bisection([mfr, mfr], [self.gauss_mean, self.gauss_mean], data_cov[1,0])
+            # gauss_cov[1,0], gauss_cov[0,1] = x, x
+            gauss_cov[d+1]=x
+        gauss_cov = scipy.linalg.toeplitz(gauss_cov)
+        return gauss_cov
+
+    def dichotomized_gauss(self):
+        mean = np.repeat(self.gauss_mean, self.gauss_cov.shape[0])
+        gen_dichgauss = np.random.multivariate_normal(mean=mean,
+                cov=self.gauss_cov, size=self.data.shape)
+        gen_data = np.zeros_like(gen_dichgauss)
+        gen_data[gen_dichgauss>0]=1
+        gen_data[gen_dichgauss<=0]=0
+        # print("size of gen data", gen_data.shape)
+        self.gen_data = gen_data
+        return gen_data
+
+    def dich_autocorrelation(self, data, delay):
+        autocor = []
+        for i in range(len(delay)):
+            acr = np.sum(data[:,:,0]*data[:,:,1+i],0)/(data.shape[1])
+            acr = np.sum(acr, 0)/data.shape[0]
+            autocor.append(acr)
+        return autocor
+
+    def estimate_tau(self, binsize, samplerate, delayrange, sampletimespan):
+        raster = raster_full_to_events(self.gen_data, samplerate, sampletimespan)
+        # delay = np.linspace(delayrange[0], delayrange[1], 20)
+        delay = [i for i in range(delayrange[0], delayrange[1])]#range of delays
+        mfr = calculate_meanfiringrate(raster, sampletimespan)#mean firing rate
+        autocor = self.dich_autocorrelation(self.gen_data, delay)#autocorr calculation
+        b=(binsize*mfr)**2
+        tau, a = leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize, b)#least sq fit 
+        # plot_autocor(np.array(autocor), np.asarray(delay)*binsize, a, b, tau)#plotting autocorr
+        # print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
+        return tau, a
+    
+    def estimate_tau_doubleexp(self, binsize, samplerate, delayrange, sampletimespan):
+        raster = raster_full_to_events(self.gen_data, samplerate, sampletimespan)
+        # delay = np.linspace(delayrange[0], delayrange[1], 20)
+        delay = [i for i in range(delayrange[0], delayrange[1])]#range of delays
+        mfr = calculate_meanfiringrate(raster, sampletimespan)#mean firing rate
+        autocor = self.dich_autocorrelation(self.gen_data, delay)#autocorr calculation
+        b=(binsize*mfr)**2
+        tau, a, c, d = leastsquares_fit_doubleexp(np.asarray(autocor), np.asarray(delay)*binsize, b) 
+        # plot_autocor(np.array(autocor), np.asarray(delay)*binsize, a, b, tau)#plotting autocorr
+        # print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
+        return tau, a, c, d
+
+def autocorrelation(sig, delay):
+    autocor = []
+    print(sig.shape)
+    for d in delay:
+        #shift the signal
+        sig_delayed = np.zeros_like(sig)
+        if(d>0):
+            sig_delayed[:, d:] = sig[:, 0:-d]
+        else:
+            sig_delayed = sig
+        #calculate the correlation
+        # Y_mean = np.mean(sig, 0)
+        acr = np.sum(sig * sig_delayed, 0)/(sig.shape[1])
+        acr = np.sum(acr, 0)/sig.shape[0]
+        autocor.append(acr)
+    return autocor
 
 def create_gaussian_filter(cfg, params):
     """
@@ -123,6 +239,7 @@ def calculate_rank(X):
     print("x cov shape:", X_cov.shape)
     X_cov_rank = np.linalg.matrix_rank(X_cov)
     print("x cov rank:", X_cov_rank)
+
 
 
 def stimuli_nme(params, weights):
