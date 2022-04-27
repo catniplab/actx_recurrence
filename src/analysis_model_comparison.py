@@ -52,9 +52,11 @@ def single_vs_double_exponential_model(params, foldername, dataset_type):
     if(not np.isnan(autocor).any()):
         b=(binsize*mfr)**2
         tau, a = leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize, b)#least sq fit 
-        print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
+        print("single exponential -- mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
         ogest_exp = [a, b, tau]
 
+    # p0 = [tau, a]
+    p0 = [1,1]
     # create surrogate and estimate unbiased tau
     surrogate_taus = []
     surrogate_as = []
@@ -62,7 +64,8 @@ def single_vs_double_exponential_model(params, foldername, dataset_type):
     for i in range(surr_iters):
         dgauss_surr = dichotomizedgaussian_surrogate(rv_mean, autocor, raster_full, delay)
         _ = dgauss_surr.dichotomized_gauss()
-        tau_est, a_est = dgauss_surr.estimate_tau(binsize, samplerate, delayrange, sampletimespan)
+        tau_est, a_est = dgauss_surr.estimate_tau(binsize, samplerate, delayrange, sampletimespan,
+                p0=p0)
         surrogate_taus.append(tau_est)
         surrogate_as.append(a_est)
 
@@ -73,16 +76,21 @@ def single_vs_double_exponential_model(params, foldername, dataset_type):
     logunbiasedtau = np.log(tau) - bias
     a_est = np.mean(surrogate_as)
     exp_model_mu, exp_model_std = logunbiasedtau, std_tau
-    llh_exp = scipy.stats.lognorm.pdf(logunbiasedtau, loc=0, scale=np.exp(logunbiasedtau),
-            shape=std_tau)
+    llh_exp = scipy.stats.lognorm.pdf(logunbiasedtau, scale=np.exp(logunbiasedtau),
+            s=std_tau)
 
     # fit tau using two exponentials
+    p0 = [ogest_exp[0], ogest_exp[1],1,1]
+    # p0 = [1, 1, 1, 1]
     if(not np.isnan(autocor).any()):
         b=(binsize*mfr)**2
-        tau, a, c, d = leastsquares_fit_doubleexp(np.asarray(autocor), np.asarray(delay)*binsize, b) 
-        print("mfr = {}, b = {}, a={}, tau={}, c={}, d={}".format(mfr, b, a, tau, c, d))
+        tau, a, c, d = leastsquares_fit_doubleexp(np.asarray(autocor), np.asarray(delay)*binsize, b,
+                p0) 
+        print("double exponential -- mfr = {}, b = {}, a={}, tau={}, c={}, d={}".format(mfr, b, a, tau, c, d))
         ogest_doubleexp = [a, b, tau, c, d]
 
+    # p0 = [tau, a, c, d]
+    p0 = [1, 1, 1, 1]
     # create surrogate and estimate unbiased tau
     surrogate_taus = []
     surrogate_as = []
@@ -93,7 +101,7 @@ def single_vs_double_exponential_model(params, foldername, dataset_type):
         dgauss_surr = dichotomizedgaussian_surrogate(rv_mean, autocor, raster_full, delay)
         _ = dgauss_surr.dichotomized_gauss()
         tau_est, a_est, c_est, d_est = dgauss_surr.estimate_tau_doubleexp(binsize, samplerate,\
-                delayrange, sampletimespan)
+                delayrange, sampletimespan, p0)
         surrogate_taus.append(tau_est)
         surrogate_as.append(a_est)
         surrogate_cs.append(c_est)
@@ -106,8 +114,8 @@ def single_vs_double_exponential_model(params, foldername, dataset_type):
     logunbiasedtau = np.log(tau) - bias
     a_est = np.mean(surrogate_as)
     dblexp_model_mu, dblexp_model_std = logunbiasedtau, std_tau
-    llh_dblexp = scipy.stats.lognorm.pdf(logunbiasedtau, loc=0, scale=np.exp(logunbiasedtau),
-            shape=std_tau)
+    llh_dblexp = scipy.stats.lognorm.pdf(logunbiasedtau, scale=np.exp(logunbiasedtau),
+            s=std_tau)
 
     # plot exp vs double exp
     # compute bayes factor on these two fit models
@@ -133,7 +141,7 @@ if(__name__=="__main__"):
     #params
     params = {}
     params['binsize'] = 0.02#s = 20ms
-    params['delayrange'] = [0, 50]#units
+    params['delayrange'] = [0, 20]#units
     params['sample_rate'] = 10000#samples per second
     sampletimespan = [0, 1.640]#s
     params['rng'] = [0, 1.640]
@@ -201,5 +209,7 @@ if(__name__=="__main__"):
     with open('../outputs/analysis_model_comparison.pkl', 'rb') as handle:
         data_dump = pickle.load(handle)
 
-    print(f'mean BIC for exponential model {np.mean(bic_exps)}, mean BIC for double exponential\
-        models {np.mean(bic_dblexps)}')
+    print(f'Exponential model -- mean BIC: {np.mean(bic_exps)}, std BIC: {np.std(bic_exps)}, n =\
+            {len(bic_exps)}')
+    print(f'Double exponential model -- mean BIC: {np.mean(bic_dblexps)}, std BIC: \
+            {np.std(bic_dblexps)}, n = {len(bic_dblexps)}')

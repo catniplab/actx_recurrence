@@ -130,31 +130,31 @@ if(__name__=="__main__"):
     datafiles = {'folderloc':foldernames, 'label':cortexsides, 'filenames':filenames}
     # print(datafiles)
 
-    for count, dfs in enumerate(datafiles['folderloc']):
-        print("dfs", dfs)
-        psd, total_power, freqs, frac = oscillation_test(dfs, dataset_type, params)
-        if(np.isnan(np.asarray(psd)).any()):
-            print("skipped", psd)
-            continue
-        psds.append(psd)
-        frequencies.append(freqs)
-        total_powers.append(total_power)
-        power_frac.append(frac)
-        labels.append(datafiles['label'][count])
-        print("label: ", datafiles['label'][count])
+    # for count, dfs in enumerate(datafiles['folderloc']):
+        # print("dfs", dfs)
+        # psd, total_power, freqs, frac = oscillation_test(dfs, dataset_type, params)
+        # if(np.isnan(np.asarray(psd)).any()):
+            # print("skipped", psd)
+            # continue
+        # psds.append(psd)
+        # frequencies.append(freqs)
+        # total_powers.append(total_power)
+        # power_frac.append(frac)
+        # labels.append(datafiles['label'][count])
+        # print("label: ", datafiles['label'][count])
 
-    #dump data in a pickle file
-    data_dump = {'psds':psds,
-            'frequencies':frequencies,
-            'total_powers':total_powers,
-            'power_frac':power_frac,
-            'labels':labels}
+    # #dump data in a pickle file
+    # data_dump = {'psds':psds,
+            # 'frequencies':frequencies,
+            # 'total_powers':total_powers,
+            # 'power_frac':power_frac,
+            # 'labels':labels}
 
-    with open('../outputs/psds_plot_pickle.pkl', 'wb') as handle:
-        pickle.dump(data_dump, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    # with open('../outputs/psds_plot_pickle.pkl', 'wb') as handle:
+        # pickle.dump(data_dump, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-    # with open('../outputs/psds_plot_pickle.pkl', 'rb') as handle:
-        # data_dump = pickle.load(handle)
+    with open('../outputs/psds_plot_pickle.pkl', 'rb') as handle:
+        data_dump = pickle.load(handle)
 
     mean_power_frac = np.mean(data_dump['power_frac'])
     std_power_frac = np.std(data_dump['power_frac'])

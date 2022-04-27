@@ -73,17 +73,17 @@ def plot_psds(psds, freqs, labels, params, figloc):
     xticks = [i for i in range(0, int(freqs[0][-1]+4), 5)]
 
     for i in range(len(left_idx)):
-        stg_val_x = np.min(freqs[left_idx[i]]) * stg_frac
-        stg_val_y = np.mean(psds[left_idx[i]]) * stg_frac
+        # stg_val_x = np.min(freqs[left_idx[i]]) * stg_frac
+        # stg_val_y = np.mean(psds[left_idx[i]]) * stg_frac
         # stagger_ct[0]+=stg_val_x
-        stagger_ct[0]+= 0.25
-        stagger_ct[1]+=stg_val_y
+        # stagger_ct[0]+= 0.25
+        # stagger_ct[1]+=stg_val_y
         log_psd = psds[left_idx[i]]+stagger_ct[1]
         ax.plot(freqs[left_idx[i]]+stagger_ct[0], log_psd,\
                 color="#4f94c4", alpha=0.6)
-        ax.fill_between(freqs[left_idx[i]]+stagger_ct[0],\
-                stagger_ct[1] * np.ones(freqs[left_idx[i]].size),\
-                log_psd, alpha=0.3, color=cmap.to_rgba(i+1))
+        # ax.fill_between(freqs[left_idx[i]]+stagger_ct[0],\
+                # stagger_ct[1] * np.ones(freqs[left_idx[i]].size),\
+                # log_psd, alpha=0.3, color=cmap.to_rgba(i+1))
     ax.set_xlabel('frequencies (Hz)')
     ax.set_ylabel('power spectrum density (dB)')
     ax.set_xticks(xticks)
@@ -91,16 +91,16 @@ def plot_psds(psds, freqs, labels, params, figloc):
 
     stagger_ct = [0,0]
     for i in range(len(right_idx)):
-        stg_val_x = np.min(freqs[right_idx[i]]) * stg_frac
-        stg_val_y = np.mean(psds[right_idx[i]]) * stg_frac
+        # stg_val_x = np.min(freqs[right_idx[i]]) * stg_frac
+        # stg_val_y = np.mean(psds[right_idx[i]]) * stg_frac
         # stagger_ct[0]+=stg_val_x
-        stagger_ct[0]+= 0.25
-        stagger_ct[1]+=stg_val_y
+        # stagger_ct[0]+= 0.25
+        # stagger_ct[1]+=stg_val_y
         ax2.plot(freqs[right_idx[i]]+stagger_ct[0], psds[right_idx[i]]+stagger_ct[1],\
                 color="#ff851a", alpha=0.6)
-        ax2.fill_between(freqs[right_idx[i]]+stagger_ct[0],\
-                stagger_ct[1] * np.ones(freqs[right_idx[i]].size),\
-                psds[right_idx[i]]+stagger_ct[1], alpha=0.3, color=cmap2.to_rgba(i+1))
+        # ax2.fill_between(freqs[right_idx[i]]+stagger_ct[0],\
+                # stagger_ct[1] * np.ones(freqs[right_idx[i]].size),\
+                # psds[right_idx[i]]+stagger_ct[1], alpha=0.3, color=cmap2.to_rgba(i+1))
     ax2.set_xlabel('frequencies (Hz)')
     ax2.set_ylabel('power spectrum density (dB)')
     ax2.set_xticks(xticks)

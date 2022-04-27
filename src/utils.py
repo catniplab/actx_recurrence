@@ -64,7 +64,7 @@ class double_exponentialClass:
         self.b = 0
 
     def exponential_func(self, t, tau, a, c, d):
-        return a * np.exp(-t/tau) + self.b + c * np.exp(-d*t) 
+        return a * np.exp(-t/tau) + self.b + c * np.exp(-t/d) 
 
 def measure_isi(raster):
     isi_list = []
@@ -101,18 +101,19 @@ def resample(raster, raster_full, binsize, og_samplerate):
         new_raster.append(new_raster_tmp)
     return new_raster, new_raster_full
 
-def leastsquares_fit(autocor, delay, b):
+def leastsquares_fit(autocor, delay, b, p0=[1,1]):
     xdata = np.array(delay)
     exc_int = exponentialClass()
     exc_int.b = b
-    optval, optcov = curve_fit(exc_int.exponential_func, xdata, autocor) 
+    optval, optcov = curve_fit(exc_int.exponential_func, xdata, autocor, p0) 
     return optval
 
-def leastsquares_fit_doubleexp(autocor, delay, b):
+def leastsquares_fit_doubleexp(autocor, delay, b, p0=[1,1,1,1]):
     xdata = np.array(delay)
     exc_int = double_exponentialClass()
     exc_int.b = b
-    optval, optcov = curve_fit(exc_int.exponential_func, xdata, autocor) 
+    optval, optcov = curve_fit(exc_int.exponential_func, xdata, autocor, p0 = p0, method='dogbox',\
+            verbose=2, maxfev=1000) 
     return optval
 
 class dichotomizedgaussian_surrogate():
@@ -144,45 +145,63 @@ class dichotomizedgaussian_surrogate():
         gen_data = np.zeros_like(gen_dichgauss)
         gen_data[gen_dichgauss>0]=1
         gen_data[gen_dichgauss<=0]=0
-        # print("size of gen data", gen_data.shape)
+        # print("size of gen data", gen_data.shape, self.data.shape)
         self.gen_data = gen_data
         return gen_data
 
     def dich_autocorrelation(self, data, delay):
         autocor = []
         for i in range(len(delay)):
-            acr = np.sum(data[:,:,0]*data[:,:,1+i],0)/(data.shape[1])
-            acr = np.sum(acr, 0)/data.shape[0]
+            acr = np.sum(data[:,:,0]*data[:,:,1+i],0)/(data.shape[0])
+            acr = np.sum(acr, 0)/data.shape[1]
             autocor.append(acr)
         return autocor
 
-    def estimate_tau(self, binsize, samplerate, delayrange, sampletimespan):
+    # def dich_autocorrelation(self, sig, delay):
+        # autocor = []
+        # print(sig.shape)
+        # for d in delay:
+            # # shift the signal
+            # sig_delayed = np.zeros_like(sig)
+            # if(d>0):
+                # sig_delayed[:, d:] = sig[:, 0:-d]
+            # else:
+                # sig_delayed = sig
+            # # calculate the correlation
+            # # Y_mean = np.mean(sig, 0)
+            # acr = np.sum(sig * sig_delayed, 0)/(sig.shape[1])
+            # acr = np.sum(acr, 0)/sig.shape[0]
+            # autocor.append(acr)
+        # return autocor
+
+    def estimate_tau(self, binsize, samplerate, delayrange, sampletimespan, p0=[0,0]):
         raster = raster_full_to_events(self.gen_data, samplerate, sampletimespan)
         # delay = np.linspace(delayrange[0], delayrange[1], 20)
         delay = [i for i in range(delayrange[0], delayrange[1])]#range of delays
         mfr = calculate_meanfiringrate(raster, sampletimespan)#mean firing rate
         autocor = self.dich_autocorrelation(self.gen_data, delay)#autocorr calculation
         b=(binsize*mfr)**2
-        tau, a = leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize, b)#least sq fit 
+        tau, a = leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize, b, p0)#least sq fit 
         # plot_autocor(np.array(autocor), np.asarray(delay)*binsize, a, b, tau)#plotting autocorr
         # print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
         return tau, a
     
-    def estimate_tau_doubleexp(self, binsize, samplerate, delayrange, sampletimespan):
+    def estimate_tau_doubleexp(self, binsize, samplerate, delayrange, sampletimespan, p0=[0,0,0,0]):
         raster = raster_full_to_events(self.gen_data, samplerate, sampletimespan)
         # delay = np.linspace(delayrange[0], delayrange[1], 20)
         delay = [i for i in range(delayrange[0], delayrange[1])]#range of delays
         mfr = calculate_meanfiringrate(raster, sampletimespan)#mean firing rate
         autocor = self.dich_autocorrelation(self.gen_data, delay)#autocorr calculation
         b=(binsize*mfr)**2
-        tau, a, c, d = leastsquares_fit_doubleexp(np.asarray(autocor), np.asarray(delay)*binsize, b) 
+        tau, a, c, d = leastsquares_fit_doubleexp(np.asarray(autocor), np.asarray(delay)*binsize, b,
+                p0) 
         # plot_autocor(np.array(autocor), np.asarray(delay)*binsize, a, b, tau)#plotting autocorr
         # print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
         return tau, a, c, d
 
 def autocorrelation(sig, delay):
     autocor = []
-    print(sig.shape)
+    print("not in dich gauss -- ", sig.shape)
     for d in delay:
         #shift the signal
         sig_delayed = np.zeros_like(sig)
