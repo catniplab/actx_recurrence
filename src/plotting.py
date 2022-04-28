@@ -10,6 +10,8 @@ from utils import exponentialClass
 
 def plot_psd(yf, xf, path):
     plt.plot(xf, yf)
+    plt.xlabel('frequency')
+    plt.ylabel('log power (dB)')
     plt.grid()
     plt.savefig(path)
     plt.close()
@@ -57,7 +59,7 @@ def plot_psds_3d(psds, freqs, labels, params, figloc):
     plt.show()
 
 
-def plot_psds(psds, freqs, labels, params, figloc):
+def plot_psds(psds, freqs, labels, params, data_dump, figloc):
     left_idx = [i for i,x in enumerate(labels) if x=="Calyx"] 
     right_idx = [i for i,x in enumerate(labels) if x=="Thelo"] 
     fig = plt.figure(figsize=(16, 6))
@@ -70,6 +72,7 @@ def plot_psds(psds, freqs, labels, params, figloc):
     cmap.set_array([])
     cmap2 = mpl.cm.ScalarMappable(norm=norm, cmap=mpl.cm.YlOrRd)
     cmap2.set_array([])
+    left_max_idx = 0
     xticks = [i for i in range(0, int(freqs[0][-1]+4), 5)]
 
     for i in range(len(left_idx)):
@@ -78,6 +81,10 @@ def plot_psds(psds, freqs, labels, params, figloc):
         # stagger_ct[0]+=stg_val_x
         # stagger_ct[0]+= 0.25
         # stagger_ct[1]+=stg_val_y
+
+        if(np.max(psds[left_idx[i]][8])>np.max(psds[left_max_idx][8])):
+            left_max_idx = left_idx[i]
+
         log_psd = psds[left_idx[i]]+stagger_ct[1]
         ax.plot(freqs[left_idx[i]]+stagger_ct[0], log_psd,\
                 color="#4f94c4", alpha=0.6)
@@ -88,6 +95,9 @@ def plot_psds(psds, freqs, labels, params, figloc):
     ax.set_ylabel('power spectrum density (dB)')
     ax.set_xticks(xticks)
     ax.set_title('left hemisphere')
+
+    # print("possible file name: ", data_dump['foldername'][left_max_idx],\
+            # data_dump['frequencies'][left_max_idx], data_dump['logpsd'][left_max_idx])
 
     stagger_ct = [0,0]
     for i in range(len(right_idx)):
@@ -143,7 +153,7 @@ def plot_spectrogram(spectrogram, figloc):
     plt.savefig(figloc)
     plt.close()
 
-def plot_autocor(autocor, delay, a, b, tau):
+def plot_autocor(autocor, delay, a, b, tau, figpath):
     exc_int = exponentialClass()
     exc_int.b = b
     x_exponen = np.linspace(delay[0], delay[-1], 100)
@@ -154,7 +164,8 @@ def plot_autocor(autocor, delay, a, b, tau):
     plt.ylabel('autocorrelation')
     plt.title('autocorrelation least squares fit')
     # plt.ylim((0, 1000))
-    plt.show()
+    # plt.show()
+    plt.savefig(figpath)
 
 def plot_raster(event_data):
     # print("event data shape:", event_data.shape)

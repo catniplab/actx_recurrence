@@ -201,7 +201,6 @@ class dichotomizedgaussian_surrogate():
 
 def autocorrelation(sig, delay):
     autocor = []
-    print("not in dich gauss -- ", sig.shape)
     for d in delay:
         #shift the signal
         sig_delayed = np.zeros_like(sig)

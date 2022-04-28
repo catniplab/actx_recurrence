@@ -184,56 +184,47 @@ if(__name__=="__main__"):
     # sampletimespan *= 10 #100ms time units
 
     # single datafile test
-    # foldername = "../data/prestrf_data/ACx_data_1/ACxCalyx/20170909-010/"
-    # figloc = "../outputs/{}.pdf".format("20170909-010")
-    # dataset_type = 'prestrf'
-    # foldername = "../data/strf_data/20210825-xxx999-002-001/"
-    # dataset_type = 'strf'
-    # figloc = "../outputs/{}.pdf".format("oscillation_singleneuron_test_neuronsummary")
-    # raster, raster_full, isi_list, psth_measure, delay, autocor, mfr, ogest, dichgaussest =\
-        # estimate_ogtau(foldername, dataset_type, params)
+    foldername = "../data/prestrf_data/ACx_data_3/ACxCalyx/20200717-xxx999-002-001/"
+    figloc = "../outputs/{}.pdf".format("20200717-xxx999-002-001")
+    dataset_type = 'prestrf'
+    figloc = "../outputs/{}.pdf".format("singleneuron_test_neuronsummary")
+    raster, raster_full, isi_list, psth_measure, delay, autocor, mfr, ogest, dichgaussest, figtitle\
+            = estimate_ogtau(foldername, dataset_type, params)
+    plot_autocor(autocor, delay, ogest[0], ogest[1], ogest[2], figloc)
     # plot_neuronsummary(autocor, delay, raster, isi_list, psth_measure, ogest, dichgaussest,\
             # foldername, figloc)
-    # oscillation_test(foldername, dataset_type, params)
 
-    dichgaussests = []
-    labels = []
-    mfrs = []
-    # # dichgaussests.append(dichgaussest)
-    # # labels.append("Calyx")
-    # # mfrs.append(mfr)
-    # # figloc = "../outputs/ests_{}.png".format("20170909-010")
-    # # plot_utauests(dichgaussests, mfrs, labels, figloc)
+    # dichgaussests = []
+    # labels = []
+    # mfrs = []
+    # foldernames = []
+    # cortexsides = []
+    # filenames = []
+    # for dfs in datafiles:
+        # for ctxs in cortexside:
+            # fname = foldername.format(dfs, ctxs)
+            # foldersinfname = os.listdir(fname)
+            # for f in foldersinfname:
+                # foldernames.append(fname+f+'/')
+                # cortexsides.append(ctxs)
+                # filenames.append(f)
 
-    foldernames = []
-    cortexsides = []
-    filenames = []
-    for dfs in datafiles:
-        for ctxs in cortexside:
-            fname = foldername.format(dfs, ctxs)
-            foldersinfname = os.listdir(fname)
-            for f in foldersinfname:
-                foldernames.append(fname+f+'/')
-                cortexsides.append(ctxs)
-                filenames.append(f)
+    # datafiles = {'folderloc':foldernames, 'label':cortexsides, 'filenames':filenames}
 
-    datafiles = {'folderloc':foldernames, 'label':cortexsides, 'filenames':filenames}
-    # print(datafiles)
-
-    for count, dfs in enumerate(datafiles['folderloc']):
-        print("dfs", dfs)
-        print("label: ", datafiles['label'][count])
-        labels.append(datafiles['label'][count])
-        raster, raster_full, isi_list, psth_measure, autocor, mfr, ogest, dichgaussest, figtitle =\
-            estimate_ogtau(dfs, dataset_type, params)
-        # raster, raster_full, isi_list, psth_measure, autocor, mfr, ogest, dichgaussest,\
-            # figtitle = testingfunc_onetrial(dfs, dataset_type, params, datafiles['filenames'][count])
-        mfrs.append(mfr)
-        dichgaussests.append(dichgaussest)
-        figloc = "../outputs/{}.pdf".format(datafiles['filenames'][count])
-        figtitle = foldername
-        plot_neuronsummary(autocor, params, raster, isi_list, psth_measure, ogest, dichgaussest,\
-                figtitle, figloc)
+    # for count, dfs in enumerate(datafiles['folderloc']):
+        # print("dfs", dfs)
+        # print("label: ", datafiles['label'][count])
+        # labels.append(datafiles['label'][count])
+        # raster, raster_full, isi_list, psth_measure, autocor, mfr, ogest, dichgaussest, figtitle =\
+            # estimate_ogtau(dfs, dataset_type, params)
+        # # raster, raster_full, isi_list, psth_measure, autocor, mfr, ogest, dichgaussest,\
+            # # figtitle = testingfunc_onetrial(dfs, dataset_type, params, datafiles['filenames'][count])
+        # mfrs.append(mfr)
+        # dichgaussests.append(dichgaussest)
+        # figloc = "../outputs/{}.pdf".format(datafiles['filenames'][count])
+        # figtitle = foldername
+        # plot_neuronsummary(autocor, params, raster, isi_list, psth_measure, ogest, dichgaussest,\
+                # figtitle, figloc)
 
 
 

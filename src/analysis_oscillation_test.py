@@ -60,21 +60,25 @@ def oscillation_test(foldername, dataset_type, params):
     print(psd.shape)
     psd = np.abs(psd[0:N//2])
     psd = 2.0/N * psd #TODO: check this validity; only for printing?
+    total_power = np.sum(psd)
+
+    logpsd = 10*np.log10(psd/total_power)
     # print("fft -----", psd)
 
     # extract the peak oscillation power from the PSD
+    fr_idx_log = np.argmax(logpsd[1:])
     fr_idx = np.argmax(psd[1:])
-    total_power = np.sum(psd)
     max_osc_power = psd[fr_idx+1]
     # frequencies = fftfreq(params['delay_times'], N)[:N//2]
     frequencies = fftfreq(N, params['binsize'])[:N//2]
     power_fraction = max_osc_power/total_power
 
     # print("freq ---", frequencies)
+    print(f' freq index: {fr_idx+1}, freq idx with log psd: {fr_idx_log+1}')
     print(f' max oscillation power: {max_osc_power}, total signal power: {total_power}, fraction:\
         {power_fraction}')
     # Find the ratio ~ power of oscillation / power of the signal -- what is mean??
-    return psd, total_power, frequencies, power_fraction
+    return psd, total_power, frequencies, power_fraction, logpsd
 
 if(__name__=="__main__"):
     # prestrf dataset
@@ -97,50 +101,50 @@ if(__name__=="__main__"):
     # sampletimespan *= 10 #100ms time units
 
     # single datafile test
-    # foldername = "../data/prestrf_data/ACx_data_1/ACxCalyx/20170909-010/"
-    # figloc = "../outputs/{}.pdf".format("20170909-010")
-    # dataset_type = 'prestrf'
-    # foldername = "../data/strf_data/20210825-xxx999-002-001/"
-    # dataset_type = 'strf'
-    # figloc = "../outputs/{}.pdf".format("oscillation_singleneuron_test_neuronsummary")
+    foldername = "../data/prestrf_data/ACx_data_3/ACxCalyx/20200717-xxx999-002-001/"
+    figloc = "../outputs/{}.pdf".format("20170909-010")
+    dataset_type = 'prestrf'
+    figloc = "../outputs/{}.pdf".format("psd_possible_culprit")
     # raster, raster_full, isi_list, psth_measure, delay, autocor, mfr, ogest, dichgaussest =\
         # estimate_ogtau(foldername, dataset_type, params)
-    # plot_neuronsummary(autocor, delay, raster, isi_list, psth_measure, ogest, dichgaussest,\
-            # foldername, figloc)
+    psd, total_power, freqs, frac, logpsd = oscillation_test(foldername, dataset_type, params)
+    plot_psd(logpsd, freqs, figloc)
     # oscillation_test(foldername, dataset_type, params)
 
-    labels = []
-    foldernames = []
-    cortexsides = []
-    filenames = []
-    psds = []
-    total_powers = []
-    frequencies = []
-    power_frac = []
-    for dfs in datafiles:
-        for ctxs in cortexside:
-            fname = foldername.format(dfs, ctxs)
-            foldersinfname = os.listdir(fname)
-            for f in foldersinfname:
-                foldernames.append(fname+f+'/')
-                cortexsides.append(ctxs)
-                filenames.append(f)
+    # labels = []
+    # names = []
+    # foldernames = []
+    # cortexsides = []
+    # filenames = []
+    # psds = []
+    # logpsds = []
+    # total_powers = []
+    # frequencies = []
+    # power_frac = []
+    # for dfs in datafiles:
+        # for ctxs in cortexside:
+            # fname = foldername.format(dfs, ctxs)
+            # foldersinfname = os.listdir(fname)
+            # for f in foldersinfname:
+                # foldernames.append(fname+f+'/')
+                # cortexsides.append(ctxs)
+                # filenames.append(f)
 
-    print(len(foldernames))
-    datafiles = {'folderloc':foldernames, 'label':cortexsides, 'filenames':filenames}
-    # print(datafiles)
+    # datafiles = {'folderloc':foldernames, 'label':cortexsides, 'filenames':filenames}
 
     # for count, dfs in enumerate(datafiles['folderloc']):
         # print("dfs", dfs)
-        # psd, total_power, freqs, frac = oscillation_test(dfs, dataset_type, params)
+        # psd, total_power, freqs, frac, logpsd = oscillation_test(dfs, dataset_type, params)
         # if(np.isnan(np.asarray(psd)).any()):
             # print("skipped", psd)
             # continue
         # psds.append(psd)
+        # logpsds.append(logpsd)
         # frequencies.append(freqs)
         # total_powers.append(total_power)
         # power_frac.append(frac)
         # labels.append(datafiles['label'][count])
+        # names.append(dfs)
         # print("label: ", datafiles['label'][count])
 
     # #dump data in a pickle file
@@ -148,7 +152,9 @@ if(__name__=="__main__"):
             # 'frequencies':frequencies,
             # 'total_powers':total_powers,
             # 'power_frac':power_frac,
-            # 'labels':labels}
+            # 'labels':labels,
+            # 'logpsd':logpsds,
+            # 'foldername':names}
 
     # with open('../outputs/psds_plot_pickle.pkl', 'wb') as handle:
         # pickle.dump(data_dump, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -156,14 +162,19 @@ if(__name__=="__main__"):
     with open('../outputs/psds_plot_pickle.pkl', 'rb') as handle:
         data_dump = pickle.load(handle)
 
+    n = len(data_dump['power_frac'])
     mean_power_frac = np.mean(data_dump['power_frac'])
     std_power_frac = np.std(data_dump['power_frac'])
-    print(f'mean power fraction = {mean_power_frac}, std = {std_power_frac}, n = {len(labels)}')
+    print(f'mean power fraction = {mean_power_frac}, std = {std_power_frac}, n = {n}')
+
+    # finding the high freq component:
+    # high_idx = np.argmax(np.asarray(data_dump['logpsd'])[:, 4:], axis=1)
+    # print(high_idx, data_dump['foldername'])
+    # print("name: ", data_dump['foldername'][high_idx],\
+            # " labels: ", data_dump['labels'][high_idx])
 
     figloc = "../outputs/{}.pdf".format("neuron_summary_psds")
-    logpsds = [10*np.log10(data_dump['psds'][i]/data_dump['total_powers'][i]) for i in
-            range(len(data_dump['total_powers']))]
-    plot_psds(logpsds, data_dump['frequencies'], data_dump['labels'], params, figloc)
+    plot_psds(data_dump['logpsd'], data_dump['frequencies'], data_dump['labels'], params, data_dump, figloc)
 
 
 
