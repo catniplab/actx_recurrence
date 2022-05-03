@@ -193,24 +193,34 @@ def plot_frvstau_fancy(data, firing_rates, taus, res, res_tau, mean_plots, filen
 
     # plt.scatter(lefthem_idx['firing_rates'], lefthem_idx['logtau_corrected'], color='#ff6600',
             # alpha=0.7)
-    leftplot_errlims = [lefthem_idx['tau_corrected'] - np.exp(lefthem_idx['logtau_corrected'] -\
+    leftplot_errlims_y = [lefthem_idx['tau_corrected'] - np.exp(lefthem_idx['logtau_corrected'] -\
             (lefthem_idx['var_logtau'])**0.5), np.exp(lefthem_idx['logtau_corrected'] +\
             (lefthem_idx['var_logtau'])**0.5) - lefthem_idx['tau_corrected']] 
 
-    rightplot_errlims = [righthem_idx['tau_corrected'] - np.exp(righthem_idx['logtau_corrected'] -\
+    rightplot_errlims_y = [righthem_idx['tau_corrected'] - np.exp(righthem_idx['logtau_corrected'] -\
             (righthem_idx['var_logtau'])**0.5), np.exp(righthem_idx['logtau_corrected'] +\
             (righthem_idx['var_logtau'])**0.5) - righthem_idx['tau_corrected']] 
 
+    leftplot_errlims_x = [lefthem_idx['firing_rate'] - lefthem_idx['sd_spikes']\
+            /lefthem_idx['duration'], lefthem_idx['sd_spikes']/lefthem_idx['duration']\
+            - lefthem_idx['firing_rate']] 
+
+    rightplot_errlims_x = [np.exp(np.log(righthem_idx['firing_rate'])\
+            - righthem_idx['sd_spikes']/righthem_idx['duration']),\
+            np.exp(righthem_idx['sd_spikes']/righthem_idx['duration']\
+            + righthem_idx['firing_rate'])] 
+
+    print("right hemi fr std -- ", righthem_idx['sd_spikes']/righthem_idx['duration'])
 
     plt.errorbar(lefthem_idx['firing_rate'], np.exp(lefthem_idx['logtau_corrected']), #lefthem_idx['tau_corrected'],
-            yerr=leftplot_errlims, fmt='o', color='#4f94c4', elinewidth=1, capsize=5,\
-            alpha=0.7, label='left hem')
+                yerr=leftplot_errlims_y, xerr=leftplot_errlims_x, fmt='o', color='#4f94c4',\
+                elinewidth=1, capsize=5, alpha=0.7, label='left hem')
     plt.scatter(mean_plots['left_mean_fr'], np.exp(mean_plots['left_fit_logtau']), marker='*',\
             color='#4f94c4', alpha=0.95, label = 'left hem mean prdicted')
 
     plt.errorbar(righthem_idx['firing_rate'], righthem_idx['tau_corrected'],
-            yerr=rightplot_errlims, fmt='o', color='#ff851a', elinewidth=1, capsize=5,
-            alpha=0.7, label='right hem')
+            yerr=rightplot_errlims_y, xerr=rightplot_errlims_x, fmt='o', color='#ff851a',\
+            elinewidth=1, capsize=5, alpha=0.7, label='right hem')
     plt.scatter(mean_plots['right_mean_fr'], np.exp(mean_plots['right_fit_logtau']), marker='*',\
             color='#ff851a', alpha=0.95, label='right hem mean predicted')
 
@@ -244,7 +254,6 @@ if (__name__ == "__main__"):
     # ['dtbin', 'set', 'hemisphere', 'n_spikes', 'n_trials', 'mean_spikes', 'sd_spikes',
     # 'Abin_est', 'tau_est', 'mse_lsq', 'logtau_est', 'autocorr', 'mse_mean', 'r2',
     # 'bias_logtau', 'var_logtau', 'logtau_corrected', 'tau_corrected', 'duration', 'firing_rate']
-
 
     print("---- checking tau consistency ----")
     check_tau_consistency(data_pd)
