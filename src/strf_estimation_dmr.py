@@ -13,8 +13,12 @@ from pytorch_minimize.optim import MinimizeWrapper
 from dataloader import load_data, get_eventraster, get_stimulifreq_barebone
 from dataloader_strf import loaddata_withraster_strf
 from dataloader_dmr import loaddata_withraster_dmr
-from utils import raster_fulltoevents, exponentialClass, spectral_resample, numpify
-from plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata,\
+
+# importing config
+from src.default_cfg import get_cfg_defaults
+
+from src.utils import raster_fulltoevents, exponentialClass, spectral_resample, numpify
+from src.plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata,\
     plot_rasterpsth, plot_spectrogram, plot_strf
 
 class strfdataset(Dataset):
@@ -46,7 +50,8 @@ class strfdataset(Dataset):
         return self.spiking_bins.shape[0]
 
     def __getitem__(self, idx):
-        stimuli_spectro = self.stimuli_baretospectrogram(int(self.spiking_bins[idx]), self.binned_freq, self.binned_amp)
+        stimuli_spectro = self.stimuli_baretospectrogram(int(self.spiking_bins[idx]),\
+                self.binned_freq, self.binned_amp)
         spike_history = self.spikes_binned[0, int(self.spiking_bins[idx] -\
             self.hist_bins-1):int(self.spiking_bins[idx]-1)]
         stimuli_spectro = torch.tensor(stimuli_spectro, device=self.device)
@@ -74,7 +79,7 @@ class strfdataset(Dataset):
             stimuli_spectrogram[int(binned_freq[0, ts]//params['freqbinsize']), idx] = binned_amp[0, ts]
         return stimuli_spectrogram
 
-class strfestimation():
+class STRF_Estimation_GLM():
     def __init__(self, params):
         self.params = params
         self.device = params['device']
@@ -198,27 +203,11 @@ if(__name__=="__main__"):
 
     #params
     params = {}
-    params['binsize'] = 0.02#s = 20ms
-    params['strf_timebinsize'] = 0.001#s = 1ms
-    # params['strf_timerange'] = [0, 0.25] #s - 0 to 250ms
-    params['strf_timerange'] = [0, 0.1] #s - 0 to 250ms
-    params['delayrange'] = [1, 30]#units
-    params['samplerate'] = 10000#samples per second
-    params['sampletimespan'] = [0, 150] #sec
-    params['minduration'] = 1.640
-    params['freqrange'] = [0, 41000]
-    params['freqbinsize'] = 100 #hz/bin -- heuristic/random?
-    params['hist_size'] = 0.02 #s = 20ms
-    params['max_amp'] = 100 #db
-
-    params['lr'] = 0.1
     params['device'] = device
-    params['batchsize'] = 32
-    params['epochs'] = 1
 
-    #regularization params
-    params['history_reg'] = 0.001
-    params['strf_reg'] = 0.001
+    # configurations values
+    cfg = get_cfg_defaults()
+    cfg.freeze()
 
     # #strf dataset
     # foldername = "../data/strf_data/"
@@ -230,15 +219,6 @@ if(__name__=="__main__"):
     cortexside = ["Calyx", "Thelo"]
     dataset_type = 'dmr'
 
-    # #params
-    # params = {}
-    # params['binsize'] = 0.02#s = 20ms
-    # params['delayrange'] = [1, 300]#units
-    # params['samplerate'] = 10000#samples per second
-    # # sampletimespan = [0, 1.640]#s
-    # params['sampletimespan'] = [100, 300]
-    # params['minduration'] = 1.640
-    # # sampletimespan *= 10 #100ms time units
 
     ## single datafile test
     # foldername = "../data/prestrf_data/ACx_data_1/ACxCalyx/20170909-010/"

@@ -5,8 +5,8 @@ import pandas as pd
 import math
 
 import matplotlib.pyplot as plt
-from dataloader_base import Data_Loading
-from plotting import plot_raster, plot_spectrogram
+from .dataloader_base import Data_Loading
+from src.plotting import plot_raster, plot_spectrogram
 
 class Data_Loading_DMR(Data_Loading):
 
@@ -60,20 +60,23 @@ class Data_Loading_DMR(Data_Loading):
                 stimuli_param = {'file':[], 'ramp':[], 'description':[], 'duration':[]}
                 stimuli_param['file'] = stimuli_raw_data[i][0]['param']['file'][0][0][0][0]
                 stimuli_param['ramp'] = stimuli_raw_data[i][0]['param']['ramp'][0][0][0][0]
-                stimuli_param['description'] = stimuli_raw_data[i][0]['param']['description'][0][0][0][0]
+                stimuli_param['description'] =\
+                        stimuli_raw_data[i][0]['param']['description'][0][0][0][0]
                 stimuli_param['duration'] = stimuli_raw_data[i][0]['param']['duration'][0][0][0][0]
 
             elif(stimuli_raw_data[i]['type'][0][0] == 'strfcloud'):
                 stimuli_param = {'durPipZZstrf':[], 'rampLenZZstrf':[], 'freqsZZstrf':[],
                         'ordZZstrf':[], 'ampsZZstrf':[], 'counter':[], 'duration':[], 'next':[],
                         'empiricalDur':[]}
-                stimuli_param['freqsZZstrf'] = stimuli_raw_data[i][0]['param']['freqsZZstrf'][0][0][0][0]
+                stimuli_param['freqsZZstrf'] =\
+                        stimuli_raw_data[i][0]['param']['freqsZZstrf'][0][0][0][0]
                 stimuli_param['rampLenZZstrf'] = stimuli_raw_data[i]\
                         [0]['param']['rampLenZZstrf'][0][0][0][0]
                 stimuli_param['durPipZZstrf'] = stimuli_raw_data[i]\
                         [0]['param']['durPipZZstrf'][0][0][0][0]
                 stimuli_param['ordZZstrf'] = stimuli_raw_data[i][0]['param']['ordZZstrf'][0][0][0][0]
-                stimuli_param['ampsZZstrf'] = stimuli_raw_data[i][0]['param']['ampsZZstrf'][0][0][0][0]
+                stimuli_param['ampsZZstrf'] =\
+                        stimuli_raw_data[i][0]['param']['ampsZZstrf'][0][0][0][0]
                 stimuli_param['counter'] = stimuli_raw_data[i][0]['param']['counter'][0][0][0][0]
                 stimuli_param['next'] = stimuli_raw_data[i][0]['param']['next'][0][0][0][0]
                 stimuli_param['empiricalDur'] = stimuli_raw_data[i]\

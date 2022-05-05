@@ -6,7 +6,7 @@ import os, pickle
 from scipy.interpolate import make_interp_spline
 from scipy.ndimage import gaussian_filter1d
 from matplotlib.collections import PolyCollection
-from utils import exponentialClass
+from src.utils import exponentialClass
 
 def plot_psd(yf, xf, path):
     plt.plot(xf, yf)

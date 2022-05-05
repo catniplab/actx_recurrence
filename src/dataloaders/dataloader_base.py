@@ -4,7 +4,9 @@ import scipy.io, scipy
 import pandas as pd
 
 import matplotlib.pyplot as plt
-from plotting import plot_raster
+from src.plotting import plot_raster
+from torch.utils.data import Dataset
+import torch
 
 class Data_Loading():
     def __init__(self, PARAMS, foldername):
@@ -21,7 +23,7 @@ class Data_Loading():
         """
 
         fileslist = [f for f in os.listdir(foldername) if os.path.isfile(foldername+f)]
-        sample_rate = PARAMS['sample_rate'] #sampling rate of neuron activity
+        sample_rate = PARAMS['samplerate'] #sampling rate of neuron activity
 
         ## opening -stimulti.mat
         stimuli_raw_file = [f for f in fileslist if "-stimuli.mat" in f][0]
@@ -120,7 +122,7 @@ class Data_Loading():
             stimuli_type = PARAMS['stimuli_type']
         else:
             stimuli_type = 'fmsweep'
-        sample_rate = PARAMS['sample_rate']
+        sample_rate = PARAMS['samplerate']
         rng = PARAMS['rng']
 
         stimuli_field = stimuli_df.loc[stimuli_df['type'] == stimuli_type]
@@ -168,7 +170,7 @@ class Data_Loading():
             Returns: event raster and a full binary raster
         """
 
-        sample_rate = PARAMS['sample_rate']
+        sample_rate = PARAMS['samplerate']
         minduration = PARAMS['minduration']
         rng = PARAMS['rng']
         numstimulis = stimuli_df.size
@@ -225,7 +227,7 @@ class Data_Loading():
             representation; updated range wrt max input data shape
         """
         ## load the entire data as a single trial
-        sample_rate = PARAMS['sample_rate']
+        sample_rate = PARAMS['samplerate']
         numstimulis = stimuli_df.size
         triggertimes = []
         raster = []
@@ -260,7 +262,7 @@ class Data_Loading():
         numstimulis = stimuli_df.shape[0]
         total_time = PARAMS['total_time']
         timebin = PARAMS['timebin']
-        sample_rate = PARAMS['sample_rate']
+        sample_rate = PARAMS['samplerate']
         freqrange = PARAMS['freqrange']
         max_amp = PARAMS['max_amp']
 
@@ -315,6 +317,7 @@ class Data_Loading():
 
         # resizing the bin size where the new bin is given mean stimulus values on all the values in
         # that window
+        import torch
         for bn in range(int((total_time*sample_rate)/binsize)):
             binned_stimuli_bare_freq[0, bn] = np.mean(stimuli_bare_freq[0, bn*binsize:(bn+1)*binsize])
             binned_stimuli_bare_amp[0, bn] = np.mean(stimuli_bare_amp[0,

@@ -4,8 +4,10 @@ import scipy.io, scipy
 import pandas as pd
 
 import matplotlib.pyplot as plt
-from dataloader_base import Data_Loading
-from plotting import plot_raster
+from .dataloader_base import Data_Loading
+from src.plotting import plot_raster
+from torch.utils.data import Dataset
+import torch
 
 class Data_Loading_STRF(Data_Loading):
     def __init__(self, PARAMS, foldername):
@@ -25,7 +27,7 @@ class Data_Loading_STRF(Data_Loading):
             Returns: Raw stimuli information data frame and raw spiking time stamp dataframe
         """
         fileslist = [f for f in os.listdir(foldername) if os.path.isfile(foldername+f)]
-        sample_rate = PARAMS['sample_rate'] #sampling rate of neuron activity
+        sample_rate = PARAMS['samplerate'] #sampling rate of neuron activity
 
         ## opening -stimulti.mat
         stimuli_raw_file = [f for f in fileslist if "-stimuli.mat" in f][0]
@@ -86,6 +88,19 @@ class Data_Loading_STRF(Data_Loading):
                     ['param']['start_frequency'][0][0][0][0]
                 stimuli_param['stop_frequency'] = stimuli_raw_data[i][0]\
                     ['param']['stop_frequency'][0][0][0][0]
+
+            # for clicktrain data
+            elif(stimuli_raw_data[i]['type'][0][0] == 'clicktrain'):
+                stimuli_param = {'amplitude':[], 'ramp':[], 'duration':[], 'next':[], 'start':[],
+                        'isi':[], 'clickduration':[], 'nclicks':[]}
+                stimuli_param['amplitude'] = stimuli_raw_data[i][0]['param']['amplitude'][0][0][0][0]
+                stimuli_param['ramp'] = stimuli_raw_data[i][0]['param']['ramp'][0][0][0][0]
+                stimuli_param['duration'] = stimuli_raw_data[i][0]['param']['duration'][0][0][0][0]
+                stimuli_param['next'] = stimuli_raw_data[i][0]['param']['next'][0][0][0][0]
+                stimuli_param['start'] = stimuli_raw_data[i][0]['param']['start'][0][0][0][0]
+                stimuli_param['isi'] = stimuli_raw_data[i][0]['param']['isi'][0][0][0][0]
+                stimuli_param['clickduration'] = stimuli_raw_data[i][0]['param']['clickduration'][0][0][0][0]
+                stimuli_param['nclicks'] = stimuli_raw_data[i][0]['param']['nclicks'][0][0][0][0]
 
             stimuli['param'].append(stimuli_param)
 
@@ -204,12 +219,70 @@ class Data_Loading_STRF(Data_Loading):
         # return raster, raster_full
 
 
+class STRF_Dataset_randomchords(Dataset):
+    def __init__(self, params, stimuli_df, spikes_df, fmsweepdata):
+        self.params = params
+        self.device = params['device']
+        self.spikes_df = spikes_df
+        self.stimuli_df = stimuli_df
+        self.strf_bins = int(self.params['strf_timerange'][1]/self.params['strf_timebinsize'])
+        self.hist_bins = int(params['hist_size']/params['strf_timebinsize'])
+        spiketimes = spikes_df['timestamps'].to_numpy() # in seconds
+        total_time = np.ceil(spiketimes[-1]+1) #s ##??? why not take the total time from stimuli?
+        params['total_time'] = total_time
+        params['timebin'] = params['strf_timebinsize']
+        samples_per_bin = int(params['samplerate']*params['strf_timebinsize']) #num samples per bin
+        self.spikes_binned = torch.tensor(self.binned_spikes(params, spiketimes),
+                device=self.device)
+        print("spike binned: ", self.spikes_binned.shape)
+        self.binned_freq, self.binned_amp = fmsweepdata.get_stimuli_barebone(stimuli_df, params)
+        self.binned_freq = torch.tensor(self.binned_freq, device=self.device)
+        self.binned_amp = torch.tensor(self.binned_amp, device=self.device)
+        self.spiking_bins = torch.tensor([i for i in range(self.strf_bins+1,\
+            self.strf_bins+self.params['batchsize']*1000)], device = self.device)
+        # self.spiking_bins = torch.tensor([i for i in range(self.strf_bins+1,\
+            # self.spikes_binned.shape[1])], device = self.device)
+        # self.spiking_bins = torch.nonzero(self.spikes_binned)[:,1]
+
+    def __len__(self):
+        return self.spiking_bins.shape[0]
+
+    def __getitem__(self, idx):
+        stimuli_spectro = self.stimuli_baretospectrogram(int(self.spiking_bins[idx]),\
+                self.binned_freq, self.binned_amp, self.params)
+        spike_history = self.spikes_binned[0, int(self.spiking_bins[idx] -\
+            self.hist_bins-1):int(self.spiking_bins[idx]-1)]
+        stimuli_spectro = torch.tensor(stimuli_spectro, device=self.device)
+        spike_history = torch.tensor(spike_history, device=self.device)
+        eta = torch.tensor(np.random.normal(0, 1, 1), device=self.device)
+        return stimuli_spectro.type(torch.float32), spike_history.type(torch.float32), eta,\
+            self.spikes_binned[0, self.spiking_bins[idx]].type(torch.float32)
+
+    def binned_spikes(self, params, spiketimes):
+        total_time = np.ceil(spiketimes[-1]+1) #s
+        binned_spikes = np.zeros((1, int(total_time / params['strf_timebinsize'])))
+        for count, spiket in enumerate(spiketimes):
+            binned_spikes[0, int(spiket/params['strf_timebinsize'])]+=1
+        return binned_spikes
+    
+    def stimuli_baretospectrogram(self, spikebin, binned_freq, binned_amp, params):
+        num_timebins =\
+            int((params['strf_timerange'][1]-params['strf_timerange'][0])/params['strf_timebinsize'])
+        num_freqbins = int((params['freqrange'][1]-params['freqrange'][0])/params['freqbinsize'])
+        stimuli_spectrogram = np.zeros((num_freqbins, num_timebins))
+        timeslice = range(spikebin-1-num_timebins, spikebin-1)
+
+        for idx, ts in enumerate(timeslice):
+            # print("freq bin size", params['freqbinsize'], "binner freq", binned_freq[0, ts])
+            stimuli_spectrogram[int(binned_freq[0, ts]//params['freqbinsize']), idx] = binned_amp[0, ts]
+        return stimuli_spectrogram
+
 def loaddata_withraster(foldername, PARAMS):
     fmsdata = Data_Loading_STRF(PARAMS, foldername)
 
     # raster, raster_full = get_sorted_event_raster(stimuli_df, spike_df, rng)
     raster, raster_full = fmsdata.get_event_raster(fmsdata.stimuli_df, fmsdata.spike_data_df, PARAMS)
-    return fmsdata.stimuli_df, fmsdata.spike_data_df, raster, raster_full
+    return fmsdata.stimuli_df, fmsdata.spike_data_df, raster, raster_full, fmsdata
 
 if (__name__ == "__main__"):
     PARAMS = {

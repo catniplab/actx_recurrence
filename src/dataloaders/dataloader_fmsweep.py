@@ -4,7 +4,7 @@ import scipy.io, scipy
 import pandas as pd
 
 import matplotlib.pyplot as plt
-from plotting import plot_raster
+from src.plotting import plot_raster
 from .dataloader_base import Data_Loading
 
 class Data_Loading_FMSweep(Data_Loading):

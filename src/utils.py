@@ -3,9 +3,18 @@ import os, pickle
 import scipy
 from scipy.optimize import curve_fit
 from scipy.stats import norm, multivariate_normal
-from dich_gauss.dichot_gauss import DichotGauss 
-from dich_gauss.optim_dichot_gauss import get_bivargauss_cdf, find_root_bisection
+from src.dich_gauss.dichot_gauss import DichotGauss 
+from src.dich_gauss.optim_dichot_gauss import get_bivargauss_cdf, find_root_bisection
 import matplotlib.pyplot as plt
+
+def check_and_create_dirs(path):
+    isExist = os.path.exists(path)
+    if not isExist:
+      # Create a new directory because it does not exist
+      os.makedirs(path)
+
+def merge_dicts(dict1, dict2):
+    return(dict1.update(dict2))
 
 def numpify(tensor):
     return tensor.cpu().detach().numpy()
