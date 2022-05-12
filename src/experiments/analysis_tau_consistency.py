@@ -40,18 +40,34 @@ def check_tau_consistency(data_pd):
     lefthem_taus_pruned = lefthem_idx_pruned['tau_est'].values
     righthem_taus_pruned = righthem_idx_pruned['tau_est'].values
 
+    # for each hemisphere's data -- get the median of Tau
+    lefthem_taus_prunedmedian = np.median(lefthem_taus_pruned)
+    righthem_taus_prunedmedian = np.median(righthem_taus_pruned)
+
+    # print("left hemi taus: ", lefthem_taus)
+    # print("right hemi taus: ", righthem_taus)
+    print(f'left hemi sample count: {lefthem_idx_pruned.shape[0]}; right hemi sample count:\
+        {righthem_idx_pruned.shape[0]}')
+    print(f'left hemi tau pruned median: {lefthem_taus_prunedmedian}; right hemi tau pruned median:\
+        {righthem_taus_prunedmedian}')
+
     lefthem_tau_prunedmean = np.mean(lefthem_taus_pruned)
     righthem_tau_prunedmean = np.mean(righthem_taus_pruned)
     lefthem_tau_prunedstd = np.std(lefthem_taus_pruned)
     righthem_tau_prunedstd = np.std(righthem_taus_pruned)
 
-    lefthem_tau_pruned_stderror = lefthem_tau_prunedstd/np.sqrt(lefthem_idx.shape[0])
-    righthem_tau_pruned_stderror = righthem_tau_prunedstd/np.sqrt(righthem_idx.shape[0])
+    print("pruned shapes: left, right", lefthem_idx_pruned.shape[0], righthem_idx_pruned.shape[0])
+    print("left hem taus pruned: ", lefthem_taus_pruned)
+    print("right hem taus pruned: ", righthem_taus_pruned)
+    lefthem_tau_pruned_stderror = lefthem_tau_prunedstd/np.sqrt(lefthem_idx_pruned.shape[0])
+    righthem_tau_pruned_stderror = righthem_tau_prunedstd/np.sqrt(righthem_idx_pruned.shape[0])
 
     print(f'left hemi -- pruned mean: {lefthem_tau_prunedmean}, std error of mean:\
-                {lefthem_tau_pruned_stderror}, n = {lefthem_idx_pruned.shape[0]}')
+            {lefthem_tau_pruned_stderror} std dev: {lefthem_tau_prunedstd},\
+            n = {lefthem_idx_pruned.shape[0]}')
     print(f'Right hemi -- pruned mean: {righthem_tau_prunedmean}, std err of mean:\
-            {righthem_tau_pruned_stderror}, n = {righthem_idx_pruned.shape[0]}')
+            {righthem_tau_pruned_stderror}, std dev: {righthem_tau_prunedstd},\
+            n = {righthem_idx_pruned.shape[0]}')
 
 def find_var_from_logvar(logvar, data):
     # form found using the moment generators
@@ -70,6 +86,7 @@ def check_fr_tau_corr(data_pd):
     data_pd_notnan = data_pd.loc[~data_pd['logtau_est'].isnull()]
     firing_rates = data_pd_notnan['firing_rate'].values
     logtaus = data_pd_notnan['logtau_corrected'].values
+    print("n = ", firing_rates.shape)
     # print("firing rates -- ", firing_rates)
     # print("taus -- ", taus)
     # print("taus min and max -- ", np.min(taus), np.max(taus))
@@ -280,7 +297,20 @@ def plot_frvstau_fancy(data, firing_rates, taus, res, res_tau, mean_plots, filen
 if (__name__ == "__main__"):
     jsonfile = "../../data/data_tau_bias_variance.json"
     data_pd = read_json(jsonfile)
-    # print(data_pd)
+    print("data shape --- ", data_pd.shape)
+    # rows_to_be_dropped = ['ACx_data_1/ACxThelo/20180322-f002', 'ACx_data_1/ACxThelo/20180329-f003',\
+            # 'ACx_data_3/ACxThelo/20180220f007', 'ACx_data_3/ACxThelo/20180310f003']
+
+    rows_to_be_dropped = ['ACx_data_1/ACxCalyx/20191010-004',
+                         'ACx_data_1/ACxThelo/20180322-f002',
+                         'ACx_data_1/ACxThelo/20180329-f003',
+                         'ACx_data_2/ACxThelo/20171208-f007',
+                         'ACx_data_3/ACxCalyx/20200718-xxx999-002-001',
+                         'ACx_data_3/ACxThelo/20180220f007',
+                         'ACx_data_3/ACxThelo/20180310f003',
+                         'ACx_data_3/ACxThelo/20200213-xxx999-005']
+    data_pd = data_pd.drop(rows_to_be_dropped, axis=0)
+    print("data shape --- ", data_pd.shape)
     # print(list(data_pd.columns.values))
     # ['dtbin', 'set', 'hemisphere', 'n_spikes', 'n_trials', 'mean_spikes', 'sd_spikes',
     # 'Abin_est', 'tau_est', 'mse_lsq', 'logtau_est', 'autocorr', 'mse_mean', 'r2',

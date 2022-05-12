@@ -6,7 +6,7 @@ import os, pickle
 from scipy.interpolate import make_interp_spline
 from scipy.ndimage import gaussian_filter1d
 from matplotlib.collections import PolyCollection
-from src.utils import exponentialClass
+from src.utils import exponentialClass, double_exponentialClass
 
 def plot_psd(yf, xf, path):
     plt.plot(xf, yf)
@@ -261,6 +261,90 @@ def plot_neuronsummary(autocorr, params, raster, isi, psth, og_est, dichgaus_est
     ax[3].set_ylabel("autocorrelation value")
     ax[3].set_xlabel("delay")
     ax[3].set_ylim(bottom=0.0)
+
+    fig.suptitle(title)
+    plt.savefig(figloc, bbox_inches='tight')
+    plt.close()
+
+def plot_neuronsummary_with_doubleexp(autocorr, params, raster, isi, psth, og_est, dichgaus_est,
+        og_est_dexp, dichgaus_est_dexp, title, figloc):
+    # plot 4 subfigures - 
+        # raster
+        # ISI
+        # psth
+        # autocorr; og_est; dichgauss_est; og_ext_dexp; dichgauus_est_dexp
+
+    #params
+    delayrange = [i for i in range(params['delayrange'][0], params['delayrange'][1])]
+    delay = np.asarray(delayrange)*params['binsize']
+    binsize = params['binsize']
+    rng = params['sampletimespan']
+    samplerate = params['samplerate']
+
+    # plot raster
+    fig, ax = plt.subplots(1, 4, figsize=(40,10))
+    ax[0].eventplot(raster, linelengths=0.9, linewidth = 0.6)
+    ax[0].set_xlabel("time")
+    ax[0].set_ylabel("event count")
+
+    # plot ISI 
+    ax[1].hist(isi, bins=1000)
+    ax[1].set_xlabel("spike time diff")
+    ax[1].set_ylabel("count")
+
+    # plot PSTH
+    psthx = [i*binsize for i in range(len(psth))]
+    # psthx = [i for i in range(len(psth))]
+    ax[2].bar(psthx, psth)
+    ax[2].set_xlabel("spike counts")
+    ax[2].set_ylabel("count")
+
+    # plot autocorss
+    # plot single exponential 
+    ax[3].plot(delay, autocorr, 'b', label='raw data')
+    a,b,tau = og_est
+    exc_int = exponentialClass()
+    exc_int.b = b
+    x_exponen = np.linspace(delayrange[0], delayrange[-1], 100)*binsize
+    y_exponen = exc_int.exponential_func(x_exponen, tau, a)
+    ax[3].plot(x_exponen, y_exponen, 'r-', label='single exp fit')
+
+    if(dichgaus_est is not None):
+        a, b, tau, std = dichgaus_est
+        exc_int = exponentialClass()
+        exc_int.b = b
+        x_exponen = np.linspace(delay[0], delay[-1], 100)
+        y_exponen = exc_int.exponential_func(x_exponen, tau, a)
+        y_exponenpstd = exc_int.exponential_func(x_exponen, tau+std, a)
+        y_exponenmstd = exc_int.exponential_func(x_exponen, tau-std, a)
+        ax[3].plot(x_exponen, y_exponen, 'g', linestyle='-', label='single exp dich gauss')
+        ax[3].fill_between(x_exponen, y_exponen - y_exponenmstd, y_exponen + y_exponenpstd,
+                     color='g', alpha=0.2)
+
+    # plot the double exponential
+    a,b,tau,c,d = og_est_dexp
+    exc_int = double_exponentialClass()
+    exc_int.b = b
+    x_exponen = np.linspace(delayrange[0], delayrange[-1], 100)*binsize
+    y_exponen = exc_int.exponential_func(x_exponen, tau, a, c, d)
+    ax[3].plot(x_exponen, y_exponen, color='#9d9d9d', linestyle='--', label= 'double exp fit')
+
+    if(dichgaus_est_dexp is not None):
+        a, b, tau, std, c, d = dichgaus_est_dexp
+        exc_int = double_exponentialClass()
+        exc_int.b = b
+        x_exponen = np.linspace(delay[0], delay[-1], 100)
+        y_exponen = exc_int.exponential_func(x_exponen, tau, a, c, d)
+        y_exponenpstd = exc_int.exponential_func(x_exponen, tau+std, a, c, d)
+        y_exponenmstd = exc_int.exponential_func(x_exponen, tau-std, a, c, d)
+        ax[3].plot(x_exponen, y_exponen, color='m', linestyle='--', label='double exp dich gauss')
+        ax[3].fill_between(x_exponen, y_exponen - y_exponenmstd, y_exponen + y_exponenpstd,
+                     color='g', alpha=0.2)
+
+    ax[3].set_ylabel("autocorrelation value")
+    ax[3].set_xlabel("delay")
+    ax[3].set_ylim(bottom=0.0)
+    ax[3].legend(loc='upper right', fontsize=4, markerscale=0.5)
 
     fig.suptitle(title)
     plt.savefig(figloc, bbox_inches='tight')

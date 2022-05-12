@@ -20,13 +20,13 @@ from src.utils import raster_full_to_events, calculate_meanfiringrate, exponenti
     resample, leastsquares_fit, leastsquares_fit_doubleexp
 
 from src.plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata,\
-    plot_rasterpsth, plot_spectrogram, plot_psd, plot_psds
+    plot_rasterpsth, plot_spectrogram, plot_psd, plot_psds, plot_neuronsummary_with_doubleexp
 
 def single_vs_double_exponential_model(params, foldername, dataset_type):
     #params
     binsize = params['binsize']#s = 20ms
     delayrange = params['delayrange']#units
-    samplerate = params['sample_rate']#samples per second
+    samplerate = params['samplerate']#samples per second
     sampletimespan = params['sampletimespan']
     minduration = params['minduration']
 
@@ -52,9 +52,11 @@ def single_vs_double_exponential_model(params, foldername, dataset_type):
     autocor = autocorrelation(raster_full, delay)#autocorr calculation
 
     # fit tau using a single exponential 
+    p0 = [0.2, 0.1]
     if(not np.isnan(autocor).any()):
         b=(binsize*mfr)**2
-        tau, a = leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize, b)#least sq fit 
+        print("b values -- ", b, mfr, binsize)
+        tau, a = leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize, b, p0)#least sq fit 
         print("single exponential -- mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
         ogest_exp = [a, b, tau]
 
@@ -79,7 +81,8 @@ def single_vs_double_exponential_model(params, foldername, dataset_type):
     logunbiasedtau = np.log(tau) - bias
     a_est = np.mean(surrogate_as)
     exp_model_mu, exp_model_std = logunbiasedtau, std_tau
-    llh_exp = scipy.stats.lognorm.pdf(logunbiasedtau, scale=np.exp(logunbiasedtau),
+    dichgaussest = [a_est, b, np.exp(logunbiasedtau), std_tau]
+    llh_exp = scipy.stats.lognorm.pdf(tau, scale=np.exp(logunbiasedtau),
             s=std_tau)
 
     max_llh = -10000000.0
@@ -97,7 +100,7 @@ def single_vs_double_exponential_model(params, foldername, dataset_type):
                     tau, a, c, d = leastsquares_fit_doubleexp(np.asarray(autocor),\
                             np.asarray(delay)*binsize, b, p0) 
                 except:
-                    print("welp that didn't work")
+                    print("welp that didn't work -- curve fit")
                     continue
 
                 print("double exponential -- mfr = {}, b = {}, a={}, tau={}, c={}, d={}".\
@@ -121,8 +124,8 @@ def single_vs_double_exponential_model(params, foldername, dataset_type):
                     tau_est, a_est, c_est, d_est = dgauss_surr.estimate_tau_doubleexp(binsize,\
                             samplerate, delayrange, sampletimespan, p0)
                 except:
-                    print("welp that didn't work")
-                    break
+                    print("welp that didn't work -- dgauss dblexp")
+                    continue
 
                 surrogate_taus.append(tau_est)
                 surrogate_as.append(a_est)
@@ -134,37 +137,47 @@ def single_vs_double_exponential_model(params, foldername, dataset_type):
             bias = np.log(scale) - np.log(tau)
             std_tau = shape
             logunbiasedtau = np.log(tau) - bias
+
             a_est = np.mean(surrogate_as)
+            c_est = np.mean(surrogate_as)
+            shape_d, loc_d, scale_d = scipy.stats.lognorm.fit(surrogate_ds)
+            bias_d = np.log(scale_d) - np.log(d)
+            logunbiased_d = np.log(d) - bias
+
             dblexp_model_mu, dblexp_model_std = logunbiasedtau, std_tau
-            llh_dblexp = scipy.stats.lognorm.pdf(logunbiasedtau, scale=np.exp(logunbiasedtau),
+            llh_dblexp = scipy.stats.lognorm.pdf(tau, scale=np.exp(logunbiasedtau),
                     s=std_tau)
+            print("llh for dbl exp: ", llh_dblexp)
+            dichgaussest_dexp = [a_est, b, np.exp(logunbiasedtau), std_tau, c_est, logunbiased_d]
+
             if(max_llh<llh_dblexp):
                 max_llh = llh_dblexp
                 best_est = ogest_doubleexp
-                best_logunbiasedtau = logunbiasedtau
+                best_dichgauss_dexp = dichgaussest_dexp
 
     print("best estimates:")
     print("max llh :", max_llh)
     print("best est: ", best_est)
-    print("best log tau est: ", best_logunbiasedtau)
+    print("best dich gaus est: ", best_dichgauss_dexp)
 
     # plot exp vs double exp
     # compute bayes factor on these two fit models
     # bic of exp
     num_params = 2
-    num_data = surr_items # is this correct?
+    num_data = surr_iters # is this correct?
     bic_exp = num_params*np.log(num_data) - 2*np.log(llh_exp)
 
     # bic for double exp
     num_params = 4
-    num_data = surr_items # is this correct?
-    bic_dblexp = num_params*np.log(num_data) - 2*np.log(llh_dblexp)
+    num_data = surr_iters # is this correct?
+    bic_dblexp = num_params*np.log(num_data) - 2*np.log(max_llh)
 
-    return llh_exp, llh_dblexp, bic_exp, bic_dblexp
+    return llh_exp, max_llh, bic_exp, bic_dblexp, autocor, delay, raster, isi_list,\
+        psth_measure, ogest_exp, dichgaussest, best_est, best_dichgauss_dexp
 
 if(__name__=="__main__"):
     # prestrf dataset
-    foldername = "../data/prestrf_data/ACx_data_{}/ACx{}/"
+    foldername = "../../data/prestrf_data/ACx_data_{}/ACx{}/"
     datafiles = [1,2,3]
     cortexside = ["Calyx", "Thelo"]
     dataset_type = 'prestrf'
@@ -173,28 +186,33 @@ if(__name__=="__main__"):
     params = {}
     params['binsize'] = 0.02#s = 20ms
     params['delayrange'] = [0, 20]#units
-    params['sample_rate'] = 10000#samples per second
+    params['samplerate'] = 10000#samples per second
     sampletimespan = [0, 1.640]#s
     params['rng'] = [0, 1.640]
-    params['sampletimespan'] = [100, 300]
+    # params['sampletimespan'] = [0, 1640]
+    params['sampletimespan'] = sampletimespan
     params['minduration'] = 1.640
     params['freqrange'] = [0, 45000]
     params['freqbin'] = 10 #heuristic/random?
     # sampletimespan *= 10 #100ms time units
 
     # parameter initialization for c and d
-    params['c_list'] = np.random.uniform(low=-0.5 high=0.5, size=(20,)) # range like for a
-    params['d_list'] = np.random.uniform(low=0.005, high=0.3, size=(20,)) # tau value range in ms
+    params['c_list'] = np.random.uniform(low=-0.5, high=0.5, size=(1,)) # range like for a
+    params['d_list'] = np.random.uniform(low=0.005, high=0.3, size=(1,)) # tau value range in ms
 
-    single datafile test
-    foldername = "../data/prestrf_data/ACx_data_1/ACxCalyx/20170909-010/"
+    # # single datafile test
+    foldername = "../../data/prestrf_data/ACx_data_1/ACxCalyx/20170909-010/"
     figloc = "../outputs/{}.pdf".format("20170909-010")
     dataset_type = 'prestrf'
-    figloc = "../outputs/{}.pdf".format("oscillation_singleneuron_test_neuronsummary")
-    llh_exp, llh_dblexp, bic_exp, bic_dblexp = single_vs_double_exponential_model(params,\
-            dfs, dataset_type)
-    plot_neuronsummary_model_selection(autocor, delay, raster, isi_list, psth_measure, ogest, dichgaussest,\
-            foldername, figloc)
+    figloc = "../../outputs/{}.pdf".format("model_comparison_singleneuron_summary")
+    llh_exp, llh_dblexp, bic_exp, bic_dblexp, autocor, delay, raster, isi_list, psth_measure,\
+        ogest, dichgaussest, ogest_dexp, dichgaussest_dexp =\
+        single_vs_double_exponential_model(params, foldername, dataset_type)
+    print(f' BIC for single exp: {bic_exp}; BIC for double exp: {bic_dblexp}; LLH for single exp:\
+        {llh_exp}; LLH for double exp: {llh_dblexp}')
+
+    plot_neuronsummary_with_doubleexp(autocor, params, raster, isi_list, psth_measure, ogest,\
+            dichgaussest, ogest_dexp, dichgaussest_dexp, foldername, figloc)
 
     # labels = []
     # foldernames = []

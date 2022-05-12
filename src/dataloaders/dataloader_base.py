@@ -35,7 +35,9 @@ class Data_Loading():
 
         for i in range(stimuli_raw_data.shape[0]):
             stimuli['type'].append(stimuli_raw_data[i]['type'][0][0])
-            stimuli['stim_length'].append(stimuli_raw_data[i]['stimlength'][0][0][0])
+            # stimuli['stim_length'].append(stimuli_raw_data[i]['stimlength'][0][0][0])
+            # TODO: check if this is correct
+            stimuli['stim_length'].append(stimuli_raw_data[i]['stimlength'][0][0][0]/sample_rate)
             stimuli['trigger'].append(stimuli_raw_data[i]['trigger'][0][0][0]/sample_rate)
             stimuli['datafile'].append(stimuli_raw_data[i]['datafile'][0][0][0])
 
@@ -173,7 +175,7 @@ class Data_Loading():
         sample_rate = PARAMS['samplerate']
         minduration = PARAMS['minduration']
         rng = PARAMS['rng']
-        numstimulis = stimuli_df.size
+        numstimulis = stimuli_df.shape[0]
         triggertimes = []
         del_time = 0.001 #s
 
@@ -184,14 +186,28 @@ class Data_Loading():
             stimuli_param = stimuli.param.dropna().apply(pd.Series) 
             stimuli_trigger = stimuli['trigger'].to_numpy()
             stimuli_next_trigger = stimuli_next['trigger'].to_numpy()
-            stimuli_duration = stimuli['stim_length'].to_numpy()/1000
+
+            #TODO: check if this is correct
+            stimuli_duration = stimuli['stim_length'].to_numpy()
+            stimuli_next_duration = stimuli_next['stim_length'].to_numpy()
+            # stimuli_duration = stimuli['stim_length'].to_numpy()/1000
             # if((stimuli_next_trigger - (stimuli_trigger+stimuli_duration))>minduration):
                 # triggertimes.append([stimuli_trigger+stimuli_duration,
                     # stimuli_trigger+stimuli_duration+minduration])
-            if((stimuli_next_trigger - stimuli_trigger)>minduration+del_time):
+            # print("stimuli trigger, next trigger, duration, min duration", stimuli_trigger,
+                    # stimuli_next_trigger, stimuli_duration, minduration)
+            if((stimuli_next_trigger - (stimuli_trigger+stimuli_duration))>minduration+del_time):
                 # triggertimes.append([stimuli_trigger, stimuli_trigger+minduration])
-                triggertimes.append([stimuli_next_trigger-minduration-del_time,\
-                    stimuli_next_trigger-del_time])
+                triggertimes.append([stimuli_trigger+stimuli_duration,\
+                        stimuli_trigger+stimuli_duration+minduration])
+                # triggertimes.append([stimuli_next_trigger-minduration-del_time,\
+                    # stimuli_next_trigger-del_time])
+            if(i == numstimulis-2):
+                # adding spikes after the last stimulus presentation
+                triggertimes.append([stimuli_next_trigger+stimuli_next_duration,\
+                        stimuli_next_trigger+stimuli_next_duration+minduration])
+
+
 
         n_triggers = len(triggertimes)
         start_samples = round(rng[0]*sample_rate)
@@ -199,9 +215,10 @@ class Data_Loading():
         n_samples = stop_samples - start_samples
         raster_full = np.zeros([n_triggers, n_samples])
         raster = []
+        empty_rows = []
 
         for i in range(n_triggers):
-            spikes = spikes_df.loc[(spikes_df['timestamps']>triggertimes[i][0][0]+rng[0]) &
+            spikes = spikes_df.loc[(spikes_df['timestamps']>=(triggertimes[i][0][0]+rng[0])) &
                                     (spikes_df['timestamps']<triggertimes[i][0][0]+rng[1])]
             spikes = spikes['timestamps'].to_numpy()
             if(spikes.shape[0] > 0):
@@ -209,14 +226,17 @@ class Data_Loading():
                 spike_pos = np.floor((spikes - triggertimes[i][0][0])*sample_rate)\
                         - start_samples
                 if((spike_pos>=n_samples).any()):
-                    print(spike_pos, start_samples, triggertimes[i][0][0], spikes)
+                    print("spike check in dataloader base: ", spike_pos, start_samples,\
+                            triggertimes[i][0][0], spikes)
                 raster_full[i, spike_pos.astype(int)] = 1
                 spike_pos = np.floor((spikes - triggertimes[i][0][0])*sample_rate) 
                 raster.append(spike_pos/sample_rate)
             else:
+                empty_rows.append(i)
                 raster.append([])
 
         raster = np.asarray(raster)
+        # raster_full = np.delete(raster_full, empty_rows, axis=0)
         return raster, raster_full
 
     def get_event_raster_single_trial(self, stimuli_df, spikes_df, PARAMS):

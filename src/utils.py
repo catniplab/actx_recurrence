@@ -41,6 +41,22 @@ def calculate_meanfiringrate(raster, sampletime):
        mfs.append(len(raster[i])/(sampletime[1]-sampletime[0]))#mfs across time
     return np.mean(mfs)#mean across trials
 
+def calculate_meanfiringrate_test(raster, sampletime):
+    mfs_s = []
+    for i in range(len(raster)):
+       mfs_s.append(len(raster[i]))#spike firing count across trials
+    mfs_mean = np.mean(mfs_s) #mean across trials on number of spikes
+    mfs = mfs_mean/(sampletime[1]-sampletime[0])
+    return mfs 
+
+def calculate_meanfiringrate_test2(raster, raster_full, sampletime):
+    mfs_s = []
+    for i in range(len(raster)):
+       mfs_s.append(np.sum(np.where(raster_full[i]>0, 1, 0)))#spike firing count across trials
+    mfs_mean = np.mean(mfs_s) #mean across trials on number of spikes
+    mfs = mfs_mean/(sampletime[1]-sampletime[0])
+    return mfs 
+
 def calculate_fanofactor(isi, raster, samplerate, binsize):
     ## mean of fano factor on multiple trials
     # fanof = (np.var(data, ddof=1)/np.mean(data))
@@ -88,7 +104,7 @@ def measure_isi(raster):
 def measure_psth(raster_full, binsizet, period, samplerate):
     binsize = int(samplerate*binsizet)
     totalbins = int((period*samplerate)/binsize)
-    print(period, binsize, totalbins, raster_full.shape)
+    # print(period, binsize, totalbins, raster_full.shape)
     normspikesperbin = []
     for i in range(totalbins):
         binslice = raster_full[:, i*binsize:(i+1)*binsize]
@@ -106,7 +122,7 @@ def resample(raster, raster_full, binsize, og_samplerate):
         new_raster_tmp = []
         for j in range(len(raster[i])):
             new_raster_tmp.append(raster[i][j])
-            new_raster_full[i, ((new_raster_tmp[j]*og_samplerate)/newbinsize).astype(int)]=1
+            new_raster_full[i, ((new_raster_tmp[j]*og_samplerate)/newbinsize).astype(int)]+=1
         new_raster.append(new_raster_tmp)
     return new_raster, new_raster_full
 
@@ -121,8 +137,8 @@ def leastsquares_fit_doubleexp(autocor, delay, b, p0=[1,1,1,1]):
     xdata = np.array(delay)
     exc_int = double_exponentialClass()
     exc_int.b = b
-    optval, optcov = curve_fit(exc_int.exponential_func, xdata, autocor, p0 = p0, method='dogbox',\
-            verbose=2, maxfev=1000) 
+    optval, optcov = curve_fit(exc_int.exponential_func, xdata, autocor, p0 = p0, method='dogbox')#,\
+            # maxfev=1000) 
     return optval
 
 class dichotomizedgaussian_surrogate():
