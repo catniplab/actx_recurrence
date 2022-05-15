@@ -5,7 +5,7 @@ import pandas as pd
 
 import matplotlib.pyplot as plt
 from src.plotting import plot_raster
-from .dataloader_base import Data_Loading
+from dataloader_base import Data_Loading
 
 class Data_Loading_FMSweep(Data_Loading):
     def __init__(self, PARAMS, foldername):
@@ -22,7 +22,7 @@ def loaddata_withraster(foldername, PARAMS):
 if (__name__ == "__main__"):
     PARAMS = {
             'rng': [-0.5, 2], 
-            'sample_rate': 10000, 
+            'samplerate': 10000, 
             'minduration': 1.640 #s
         }
     foldername = "../../data/prestrf_data/ACx_data_1/ACxCalyx/20080930-002/"

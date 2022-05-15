@@ -92,6 +92,8 @@ class Data_Loading():
         ## opening -tt_spikes.dat which gives us the raw spiking data 
         spikes_raw_file = [f for f in fileslist if "-tt_spikes.dat" in f][0]
         spikes_raw = scipy.io.loadmat(foldername+spikes_raw_file)
+        # print(spikes_raw.keys())
+        # print(spikes_raw['param'])
 
         # spiking data has single neuron spiking time points and the raw waveforms
         # we only require the spike times for our computations

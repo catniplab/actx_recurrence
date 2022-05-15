@@ -195,6 +195,22 @@ def check_fr_tau_corr(data_pd):
     plot_frvstau_fancy(data_pd_notnan, firing_rates, logtaus, res, res_taus, mean_plots,
             '../../outputs/analysis_frvstau_fancy.pdf')
 
+def tau_vs_depth(data_pd, depths):
+    plot_path = '../../outputs/analysis_depthvstau.pdf'
+    X = []
+    Y = []
+    for idx, row in data_pd.iterrows():
+        for key in depths.keys():
+            if(key in idx):
+                X.append(depths[key])
+                Y.append(data_pd.loc[idx]['logtau_est'])
+
+    plt.scatter(X, Y, marker='o', color='#4f94c4', alpha=0.9)
+    plt.xlabel('depth from pia (in microns)')
+    plt.ylabel('logtaus (ms)')
+    plt.savefig(plot_path)
+    plt.close()
+
 def plot_frvstau(firing_rates, taus, m, c, filename):
     plt.scatter(firing_rates, taus)
     X = np.linspace(np.min(firing_rates), max(firing_rates), 100)
@@ -309,6 +325,34 @@ if (__name__ == "__main__"):
                          'ACx_data_3/ACxThelo/20180220f007',
                          'ACx_data_3/ACxThelo/20180310f003',
                          'ACx_data_3/ACxThelo/20200213-xxx999-005']
+
+    right_neuron_depths = {
+            '20200116-xxx999-005': 322,
+            '20171208-f007': 480,
+            '20180322-f002': 331,
+            '20180309-f005': 445,
+            '20180322-f006' :500,
+            '20171208-f011': 397,
+            '20180219-f014': 510
+        }
+
+    left_neuron_depths = {
+            '20190904-001-016': 450,
+            '20191010-005': 467,
+            '20200107-009-003': 223,
+            '20200108-008-002': 240, 
+            '20200107-xxx999-007-002': 390,
+            '20200107-xxx999-001-002': 250,
+            '20191202-xxx999-003-001': 200,
+            '20191010-004': 400
+    }
+    
+    depths = {}
+    for key in right_neuron_depths.keys():
+        depths['ACxThelo/'+key] = right_neuron_depths[key]
+    for key in left_neuron_depths.keys():
+        depths['ACxCalyx/'+key] = left_neuron_depths[key]
+
     data_pd = data_pd.drop(rows_to_be_dropped, axis=0)
     print("data shape --- ", data_pd.shape)
     # print(list(data_pd.columns.values))
@@ -321,3 +365,6 @@ if (__name__ == "__main__"):
 
     print("---- FR anf Tau correlation ----")
     check_fr_tau_corr(data_pd)
+
+    print(" ------- plotting depth vs tau -------- ")
+    tau_vs_depth(data_pd, depths)
