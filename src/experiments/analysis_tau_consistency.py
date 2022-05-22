@@ -199,15 +199,35 @@ def tau_vs_depth(data_pd, depths):
     plot_path = '../../outputs/analysis_depthvstau.pdf'
     X = []
     Y = []
-    for idx, row in data_pd.iterrows():
-        for key in depths.keys():
-            if(key in idx):
-                X.append(depths[key])
-                Y.append(data_pd.loc[idx]['logtau_est'])
+    Y_std_up = []
+    Y_std_down = []
 
-    plt.scatter(X, Y, marker='o', color='#4f94c4', alpha=0.9)
+    for key in depths.keys():
+        key_found = False
+        for idx, row in data_pd.iterrows():
+            if(key in idx):
+                print(idx, key)
+                X.append(depths[key])
+                Y.append(np.exp(data_pd.loc[idx]['logtau_corrected']))
+                Y_std_down.append(data_pd.loc[idx]['tau_corrected'] -\
+                        np.exp(data_pd.loc[idx]['logtau_corrected'] -\
+                        (data_pd.loc[idx]['var_logtau'])**0.5))
+                Y_std_up.append(np.exp(data_pd.loc[idx]['logtau_corrected'] +\
+                        (data_pd.loc[idx]['var_logtau'])**0.5) - data_pd.loc[idx]['tau_corrected'])
+
+                key_found = True
+        if(key_found == False):
+            print("not found -- ", key)
+
+    Y_std_err = [Y_std_down, Y_std_up]
+
+    # plt.scatter(X, Y, marker='o', color='#4f94c4', alpha=0.9)
+    plt.errorbar(X, Y, #lefthem_idx['tau_corrected'],
+                yerr=Y_std_err,  fmt='o', color='#4f94c4',\
+                elinewidth=1, capsize=5, alpha=0.7)
     plt.xlabel('depth from pia (in microns)')
     plt.ylabel('logtaus (ms)')
+    plt.yscale('log')
     plt.savefig(plot_path)
     plt.close()
 

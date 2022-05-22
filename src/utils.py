@@ -3,6 +3,8 @@ import os, pickle
 import scipy
 from scipy.optimize import curve_fit
 from scipy.stats import norm, multivariate_normal
+from scipy.signal import fftconvolve
+
 from src.dich_gauss.dichot_gauss import DichotGauss 
 from src.dich_gauss.optim_dichot_gauss import get_bivargauss_cdf, find_root_bisection
 import matplotlib.pyplot as plt
@@ -95,10 +97,10 @@ def measure_isi(raster):
     isi_list = []
     isis_list = []
     for i in range(len(raster)):
-        spktimesi = raster[i]
-        isii =  np.asarray(spktimesi[1:]) - np.asarray(spktimesi[0:-1])
-        isi_list.extend(isii.tolist())
-        isis_list.append(isii)
+        spktimes_i = raster[i]
+        isi_i =  np.asarray(spktimes_i[1:]) - np.asarray(spktimes_i[0:-1])
+        isi_list.extend(isi_i.tolist())
+        isis_list.append(isi_i)
     return isi_list, isis_list
 
 def measure_psth(raster_full, binsizet, period, samplerate):
@@ -224,21 +226,46 @@ class dichotomizedgaussian_surrogate():
         # print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
         return tau, a, c, d
 
-def autocorrelation(sig, delay):
-    autocor = []
-    for d in delay:
-        #shift the signal
-        sig_delayed = np.zeros_like(sig)
-        if(d>0):
-            sig_delayed[:, d:] = sig[:, 0:-d]
-        else:
-            sig_delayed = sig
-        #calculate the correlation
-        # Y_mean = np.mean(sig, 0)
-        acr = np.sum(sig * sig_delayed, 0)/(sig.shape[1])
-        acr = np.sum(acr, 0)/sig.shape[0]
-        autocor.append(acr)
-    return autocor
+# def autocorrelation(sig, delay):
+    # autocorr = []
+    # for d in delay:
+        # #shift the signal
+        # sig_delayed = np.zeros_like(sig)
+        # if(d>0):
+            # sig_delayed[:, d:] = sig[:, 0:-d]
+        # else:
+            # sig_delayed = sig
+
+        # #calculate the correlation
+        # # Y_mean = np.mean(sig, 0)
+        # acr = np.sum(sig * sig_delayed, 0)/(sig.shape[1])
+        # acr = np.sum(acr, 0)/sig.shape[0]
+        # autocor.append(acr)
+    # return autocor
+
+def autocorrelation(sig, delay, biased=False):
+    raw_autocorr = raw_autocorrelation(sig, delay, biased)
+    mean_autocorr = np.mean(raw_autocorr, 0)
+    print(mean_autocorr.shape)
+    return  mean_autocorr
+
+def raw_autocorrelation(sig, delays, biased=False):
+    raw_autocorr = raw_correlation(sig, sig, biased)
+    raw_autocorr = raw_autocorr[:, raw_autocorr.shape[1]//2:][:, :delays[-1]]
+    return raw_autocorr
+
+def raw_correlation(x1, x2, biased=True):
+    if biased:
+        n = min(x1.shape[1], x2.shape[1])
+    else:
+        n = np.arange(1, min(x1.shape[1], x2.shape[1])+1, 1)
+        n = np.concatenate((n, n[:-1][::-1]))
+        n = n.reshape( tuple([1] * (x1.ndim - 1)) + (len(n),))
+
+
+    raw_corr = fftconvolve(x1, x2[:, ::-1], mode='full', axes=1)
+    raw_corr = raw_corr[:, ::-1] / n
+    return raw_corr
 
 def create_gaussian_filter(cfg, params):
     """

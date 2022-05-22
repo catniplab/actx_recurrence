@@ -9,11 +9,12 @@ from torch.utils.data import Dataset
 import torch
 
 class Data_Loading():
-    def __init__(self, PARAMS, foldername):
+    def __init__(self, cfg, PARAMS, foldername):
+        self.cfg = cfg
         self.PARAMS = PARAMS
-        self.stimuli_df, self.spike_data_df = self.load_data(foldername, PARAMS)
+        self.stimuli_df, self.spike_data_df = self.load_data(cfg, PARAMS, foldername)
 
-    def load_data(self, foldername, PARAMS):
+    def load_data(self, cfg, PARAMS, foldername):
         """
             Data loading for frequency modulated stimulus recordings
             We need three file in a folder: stimuli.mat, tt_spikes.mat, and stimuli.dat
@@ -23,7 +24,7 @@ class Data_Loading():
         """
 
         fileslist = [f for f in os.listdir(foldername) if os.path.isfile(foldername+f)]
-        sample_rate = PARAMS['samplerate'] #sampling rate of neuron activity
+        sample_rate = cfg.DATASET.samplerate #sampling rate of neuron activity
 
         ## opening -stimulti.mat
         stimuli_raw_file = [f for f in fileslist if "-stimuli.mat" in f][0]
@@ -165,7 +166,7 @@ class Data_Loading():
         raster = np.asarray(raster)
         return raster, raster_full
 
-    def get_event_raster(self, stimuli_df, spikes_df, PARAMS):
+    def get_event_raster(self, cfg, params, stimuli_df, spikes_df):
         """
             It selects all the events which are atleast $minduration$ long
                 > for each stimuli check for a 1640ms open gap 
@@ -174,12 +175,13 @@ class Data_Loading():
             Returns: event raster and a full binary raster
         """
 
-        sample_rate = PARAMS['samplerate']
-        minduration = PARAMS['minduration']
-        rng = PARAMS['rng']
+        sample_rate = cfg.DATASET.samplerate
+        minduration = cfg.DATASET.trial_minduration
+        rng = cfg.DATASET.window_range
+
         numstimulis = stimuli_df.shape[0]
         triggertimes = []
-        del_time = 0.001 #s
+        del_time = cfg.DATASET.del_time
 
         # find all trials which are minduration long
         for i in range(numstimulis-1):
@@ -193,21 +195,15 @@ class Data_Loading():
             stimuli_duration = stimuli['stim_length'].to_numpy()
             stimuli_next_duration = stimuli_next['stim_length'].to_numpy()
             # stimuli_duration = stimuli['stim_length'].to_numpy()/1000
-            # if((stimuli_next_trigger - (stimuli_trigger+stimuli_duration))>minduration):
-                # triggertimes.append([stimuli_trigger+stimuli_duration,
-                    # stimuli_trigger+stimuli_duration+minduration])
             # print("stimuli trigger, next trigger, duration, min duration", stimuli_trigger,
                     # stimuli_next_trigger, stimuli_duration, minduration)
             if((stimuli_next_trigger - (stimuli_trigger+stimuli_duration))>minduration+del_time):
-                # triggertimes.append([stimuli_trigger, stimuli_trigger+minduration])
-                triggertimes.append([stimuli_trigger+stimuli_duration,\
-                        stimuli_trigger+stimuli_duration+minduration])
-                # triggertimes.append([stimuli_next_trigger-minduration-del_time,\
-                    # stimuli_next_trigger-del_time])
-            if(i == numstimulis-2):
-                # adding spikes after the last stimulus presentation
-                triggertimes.append([stimuli_next_trigger+stimuli_next_duration,\
-                        stimuli_next_trigger+stimuli_next_duration+minduration])
+                triggertimes.append([stimuli_trigger+stimuli_duration+rng[0],\
+                        stimuli_trigger+stimuli_duration+rng[1]])
+            # if(i == numstimulis-2):
+                # # adding spikes after the last stimulus presentation
+                # triggertimes.append([stimuli_next_trigger+stimuli_next_duration+rng[0],\
+                        # stimuli_next_trigger+stimuli_next_duration+rng[1]])
 
 
 
@@ -220,8 +216,8 @@ class Data_Loading():
         empty_rows = []
 
         for i in range(n_triggers):
-            spikes = spikes_df.loc[(spikes_df['timestamps']>=(triggertimes[i][0][0]+rng[0])) &
-                                    (spikes_df['timestamps']<triggertimes[i][0][0]+rng[1])]
+            spikes = spikes_df.loc[(spikes_df['timestamps']>=(triggertimes[i][0][0])) &
+                                    (spikes_df['timestamps']<triggertimes[i][1][0])]
             spikes = spikes['timestamps'].to_numpy()
             if(spikes.shape[0] > 0):
                 # raster.append(spike_pos/sample_rate)

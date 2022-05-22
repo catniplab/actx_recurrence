@@ -9,17 +9,30 @@ import yaml
 _C = CN()
 
 _C.DATASET = CN()
-_C.DATASET.binsize = 0.02#s = 20ms
+_C.DATASET.binsize = 0.02 #s = 20ms
+_C.DATASET.foldername = "../data/prestrf_data/ACx_data_{}/ACx{}/"
+_C.DATASET.datafiles = [1,2,3]
+_C.DATASET.cortexside = ["Calyx", "Thelo"]
+_C.DATASET.dataset_type = 'prestrf'
+
+_C.DATASET.delayrange = [1, 40] # bins unit; for autocorrelation check.
+_C.DATASET.samplerate = 10000 # samples per second
+_C.DATASET.trial_minduration = 1.640
+_C.DATASET.window_range = [0.1, 1.640] #s
+_C.DATASET.del_time = 0.001 #s
+
+# for a single trial dataset
+_C.DATASET.sampletimespan = [0, 1.640]#s
+# _C.DATASET.sampletimespan = [0, 150] #sec
+
+# for STRF analysis
 _C.DATASET.strf_timebinsize = 0.001#s = 1ms
 _C.DATASET.strf_timerange = [0, 0.1] #s - 0 to 250ms
-_C.DATASET.delayrange = [1, 30]#units
-_C.DATASET.samplerate = 10000#samples per second
-_C.DATASET.sampletimespan = [0, 150] #sec
-_C.DATASET.minduration = 1.640
 _C.DATASET.freqrange = [0, 41000]
 _C.DATASET.freqbinsize = 100 #hz/bin -- heuristic/random?
 _C.DATASET.hist_size = 0.02 #s = 20ms
 _C.DATASET.max_amp = 100 #db
+
 
 _C.TRAIN = CN()
 _C.TRAIN.lr = 0.01
@@ -37,12 +50,3 @@ def get_cfg_defaults():
   return _C.clone()
 
 
-# #params
-# params = {}
-# params['binsize'] = 0.02#s = 20ms
-# params['delayrange'] = [1, 300]#units
-# params['samplerate'] = 10000#samples per second
-# # sampletimespan = [0, 1.640]#s
-# params['sampletimespan'] = [100, 300]
-# params['minduration'] = 1.640
-# # sampletimespan *= 10 #100ms time units

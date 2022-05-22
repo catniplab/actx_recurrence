@@ -205,64 +205,77 @@ def plot_rasterpsth(raster, psth, isi, figloc, binsizet, rng, fanof):
     plt.savefig(figloc, bbox_inches='tight')
     plt.close()
 
-def plot_neuronsummary(autocorr, params, raster, isi, psth, og_est, dichgaus_est, title, figloc):
-    # plot 4 subfigures - 
+def plot_summary_single_neuron(cfg, params, estimate_outputs, foldername, figloc):
+        # autocorr, params, raster, isi, psth, og_est, dichgaus_est, title, figloc):
+    # plot 6 subfigures - 
         # raster
         # ISI
         # psth
-        # autocorr; og_est; dichgauss_est
+        # conditional PSTH
+        # autocorr + og_est curve fit + dichgauss_est curve fit
+        # tau distribution from dich gaus est and unbiased tau value mark
 
     #params
-    delayrange = [i for i in range(params['delayrange'][0], params['delayrange'][1])]
-    delay = np.asarray(delayrange)*params['binsize']
-    binsize = params['binsize']
-    rng = params['sampletimespan']
-    samplerate = params['samplerate']
+    delayrange = [i for i in range(cfg.DATASET.delayrange[0], cfg.DATASET.delayrange[1])]
+    delay = estimate_outputs['delays']
+    binsize = cfg.DATASET.binsize
+    rng = cfg.DATASET.sampletimespan
+    samplerate = cfg.DATASET.samplerate
 
     # plot raster
-    fig, ax = plt.subplots(1, 4, figsize=(40,10))
-    ax[0].eventplot(raster, linelengths=0.9, linewidth = 0.6)
+    fig, ax = plt.subplots(1, 6, figsize=(24,4))
+    ax[0].eventplot(estimate_outputs['raster'], linelengths=0.9, linewidth = 0.6)
     ax[0].set_xlabel("time")
     ax[0].set_ylabel("event count")
 
     # plot ISI 
-    ax[1].hist(isi, bins=1000)
+    ax[1].hist(estimate_outputs['isi_list'], bins=1000)
     ax[1].set_xlabel("spike time diff")
     ax[1].set_ylabel("count")
 
     # plot PSTH
+    psth = estimate_outputs['psth_measure']
     psthx = [i*binsize for i in range(len(psth))]
     # psthx = [i for i in range(len(psth))]
     ax[2].bar(psthx, psth)
     ax[2].set_xlabel("spike counts")
     ax[2].set_ylabel("count")
 
+    # plot conditional psth
+    psth = estimate_outputs['psth_measure']
+    psthx = [i*binsize for i in range(len(psth))]
+    # psthx = [i for i in range(len(psth))]
+    ax[3].bar(psthx, psth)
+    ax[3].set_xlabel("spike counts")
+    ax[3].set_ylabel("count")
+
     # plot autocorss
-    ax[3].plot(delay, autocorr, 'b')
-    a,b,tau = og_est
+    autocorr = estimate_outputs['mean_autocorr']
+    ax[4].plot(delay, autocorr, 'b')
+    a,b,tau = estimate_outputs['fit_est']
     exc_int = exponentialClass()
     exc_int.b = b
     x_exponen = np.linspace(delayrange[0], delayrange[-1], 100)*binsize
     y_exponen = exc_int.exponential_func(x_exponen, tau, a)
-    ax[3].plot(x_exponen, y_exponen, 'r')
+    ax[4].plot(x_exponen, y_exponen, 'r')
 
-    if(dichgaus_est is not None):
-        a, b, tau, std = dichgaus_est
+    if(estimate_outputs['dichgauss_est'] is not None):
+        a, b, tau, std = estimate_outputs['dichgauss_est']
         exc_int = exponentialClass()
         exc_int.b = b
         x_exponen = np.linspace(delay[0], delay[-1], 100)
         y_exponen = exc_int.exponential_func(x_exponen, tau, a)
         y_exponenpstd = exc_int.exponential_func(x_exponen, tau+std, a)
         y_exponenmstd = exc_int.exponential_func(x_exponen, tau-std, a)
-        ax[3].plot(x_exponen, y_exponen, 'g')
-        ax[3].fill_between(x_exponen, y_exponen - y_exponenmstd, y_exponen + y_exponenpstd,
+        ax[4].plot(x_exponen, y_exponen, 'g')
+        ax[4].fill_between(x_exponen, y_exponen - y_exponenmstd, y_exponen + y_exponenpstd,
                      color='g', alpha=0.2)
 
-    ax[3].set_ylabel("autocorrelation value")
-    ax[3].set_xlabel("delay")
-    ax[3].set_ylim(bottom=0.0)
+    ax[4].set_ylabel("autocorrelation value")
+    ax[4].set_xlabel("delay")
+    ax[4].set_ylim(bottom=0.0)
 
-    fig.suptitle(title)
+    fig.suptitle(estimate_outputs['fig_title'])
     plt.savefig(figloc, bbox_inches='tight')
     plt.close()
 
