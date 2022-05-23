@@ -98,9 +98,10 @@ def measure_isi(raster):
     isis_list = []
     for i in range(len(raster)):
         spktimes_i = raster[i]
-        isi_i =  np.asarray(spktimes_i[1:]) - np.asarray(spktimes_i[0:-1])
-        isi_list.extend(isi_i.tolist())
-        isis_list.append(isi_i)
+        if(len(spktimes_i)>1):
+            isi_i =  np.asarray(spktimes_i[1:]) - np.asarray(spktimes_i[0:-1])
+            isi_list.extend(isi_i.tolist())
+            isis_list.append(isi_i)
     return isi_list, isis_list
 
 def measure_psth(raster_full, binsizet, period, samplerate):
@@ -108,12 +109,38 @@ def measure_psth(raster_full, binsizet, period, samplerate):
     totalbins = int((period*samplerate)/binsize)
     # print(period, binsize, totalbins, raster_full.shape)
     normspikesperbin = []
+    spikecountperbin = []
+    spike_bin = []
     for i in range(totalbins):
         binslice = raster_full[:, i*binsize:(i+1)*binsize]
         # print(binslice.shape)
         spikecount = np.sum(binslice)
+        spikecountperbin.append(spikecount)
+        spike_bin.append(i)
         normspikesperbin.append(spikecount/(raster_full.shape[0]*binsize))
-    return normspikesperbin
+    # return normspikesperbin
+    return spikecountperbin, spike_bin
+
+def psth_speed_conditional(cfg, params, raster_full, stimuli_speed):
+    obs_window_range = cfg.DATASET.window_range
+    samplerate = cfg.DATASET.samplerate #samples per second
+
+    psths_counts = []
+    psths_bins = []
+    # get unique speeds
+    unique_speeds = np.unique(stimuli_speed)
+
+    for sped in unique_speeds:
+        # get all the neurons with those speeds 
+        trial_spidx = np.argwhere(np.where(stimuli_speed==sped, 1, 0))
+        # put all neurons of one condition in one list
+        raster_sped = raster_full[trial_spidx, :]
+        psth_count_sped, psth_bins_sped = measure_psth(raster_sped, cfg.DATASET.psth_binsize,\
+            obs_window_range[1]-obs_window_range[0], samplerate)
+        psths_counts.append(psth_count_sped)
+        psths_bins.append(psth_bins_sped)
+    
+    return psths_counts, psths_bins
 
 def resample(raster, raster_full, binsize, og_samplerate):
     newbinsize = binsize*og_samplerate#new sample bin size in previous sample rate

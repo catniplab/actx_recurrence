@@ -16,9 +16,9 @@ def loaddata_withraster(cfg, PARAMS, foldername):
     fmsdata = Data_Loading_FMSweep(cfg, PARAMS, foldername)
 
     # raster, raster_full = get_sorted_event_raster(stimuli_df, spike_df, rng)
-    raster, raster_full = fmsdata.get_event_raster(cfg, PARAMS, fmsdata.stimuli_df,\
+    raster, raster_full, stimuli_speed = fmsdata.get_event_raster(cfg, PARAMS, fmsdata.stimuli_df,\
             fmsdata.spike_data_df)
-    return fmsdata.stimuli_df, fmsdata.spike_data_df, raster, raster_full
+    return fmsdata.stimuli_df, fmsdata.spike_data_df, raster, raster_full, stimuli_speed
 
 if (__name__ == "__main__"):
     PARAMS = {

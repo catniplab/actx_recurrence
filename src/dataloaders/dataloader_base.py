@@ -29,7 +29,7 @@ class Data_Loading():
         ## opening -stimulti.mat
         stimuli_raw_file = [f for f in fileslist if "-stimuli.mat" in f][0]
         stimuli_raw = scipy.io.loadmat(foldername+stimuli_raw_file)
-
+        
         # stimuli has the following fields in the initial dataset
         stimuli_raw_data = stimuli_raw['stimuli']
         stimuli = {'type':[], 'stim_length':[], 'trigger':[], 'datafile':[], 'param':[]} 
@@ -38,7 +38,7 @@ class Data_Loading():
             stimuli['type'].append(stimuli_raw_data[i]['type'][0][0])
             # stimuli['stim_length'].append(stimuli_raw_data[i]['stimlength'][0][0][0])
             # TODO: check if this is correct
-            stimuli['stim_length'].append(stimuli_raw_data[i]['stimlength'][0][0][0]/sample_rate)
+            stimuli['stim_length'].append((stimuli_raw_data[i]['stimlength'][0][0][0]/sample_rate)*10)
             stimuli['trigger'].append(stimuli_raw_data[i]['trigger'][0][0][0]/sample_rate)
             stimuli['datafile'].append(stimuli_raw_data[i]['datafile'][0][0][0])
 
@@ -181,6 +181,8 @@ class Data_Loading():
 
         numstimulis = stimuli_df.shape[0]
         triggertimes = []
+        stimuli_speed = []
+        non_fmsweeps = 0
         del_time = cfg.DATASET.del_time
 
         # find all trials which are minduration long
@@ -197,15 +199,23 @@ class Data_Loading():
             # stimuli_duration = stimuli['stim_length'].to_numpy()/1000
             # print("stimuli trigger, next trigger, duration, min duration", stimuli_trigger,
                     # stimuli_next_trigger, stimuli_duration, minduration)
-            if((stimuli_next_trigger - (stimuli_trigger+stimuli_duration))>minduration+del_time):
+
+            # if((stimuli_next_trigger - (stimuli_trigger+stimuli_duration))>\
+                    # minduration+del_time):
+
+            if(((stimuli_next_trigger - (stimuli_trigger+stimuli_duration))>\
+                    minduration+del_time) and (stimuli['type'].values!='fmsweep')):
+                non_fmsweeps += 1
+
+            if(((stimuli_next_trigger - (stimuli_trigger+stimuli_duration))> minduration+\
+                    del_time) and (stimuli['type'].values=='fmsweep')):
                 triggertimes.append([stimuli_trigger+stimuli_duration+rng[0],\
                         stimuli_trigger+stimuli_duration+rng[1]])
+                stimuli_speed.append(stimuli['param'].values[0]['speed'])
             # if(i == numstimulis-2):
                 # # adding spikes after the last stimulus presentation
                 # triggertimes.append([stimuli_next_trigger+stimuli_next_duration+rng[0],\
                         # stimuli_next_trigger+stimuli_next_duration+rng[1]])
-
-
 
         n_triggers = len(triggertimes)
         start_samples = round(rng[0]*sample_rate)
@@ -215,27 +225,33 @@ class Data_Loading():
         raster = []
         empty_rows = []
 
+        total_spikes = 0
+
         for i in range(n_triggers):
             spikes = spikes_df.loc[(spikes_df['timestamps']>=(triggertimes[i][0][0])) &
                                     (spikes_df['timestamps']<triggertimes[i][1][0])]
             spikes = spikes['timestamps'].to_numpy()
+            # print(i, spikes, triggertimes[i])
             if(spikes.shape[0] > 0):
                 # raster.append(spike_pos/sample_rate)
-                spike_pos = np.floor((spikes - triggertimes[i][0][0])*sample_rate)\
-                        - start_samples
+                spike_pos = np.floor((spikes - triggertimes[i][0][0])*sample_rate)
+                                # - start_samples
                 if((spike_pos>=n_samples).any()):
                     print("spike check in dataloader base: ", spike_pos, start_samples,\
                             triggertimes[i][0][0], spikes)
                 raster_full[i, spike_pos.astype(int)] = 1
                 spike_pos = np.floor((spikes - triggertimes[i][0][0])*sample_rate) 
+                total_spikes += len(spike_pos)
                 raster.append(spike_pos/sample_rate)
             else:
                 empty_rows.append(i)
                 raster.append([])
 
         raster = np.asarray(raster)
+        print(f'number of non fms sweeps: {non_fmsweeps}; empty trials: {len(empty_rows)};\
+            total spikes: {total_spikes}')
         # raster_full = np.delete(raster_full, empty_rows, axis=0)
-        return raster, raster_full
+        return raster, raster_full, stimuli_speed
 
     def get_event_raster_single_trial(self, stimuli_df, spikes_df, PARAMS):
            # rng, minduration=1.640):

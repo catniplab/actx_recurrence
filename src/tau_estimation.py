@@ -104,14 +104,16 @@ def estimate_ogtau(cfg, params, foldername):
     obs_window_range = cfg.DATASET.window_range
 
     #fetch raw data
-    stimuli_df, spike_df, raster, raster_full = loaddata_withraster(cfg, params, foldername)
+    stimuli_df, spike_df, raster, raster_full, stimuli_speed =\
+            loaddata_withraster(cfg, params, foldername)
     # stimuli_spectrogram = get_stimuli_spectrogram(stimuli_df, samplerate, binsize,
                 # params['freqbin'], params['freqrange'])
 
     # measure isi and psth before resampling
     isi_list, _ = utils.measure_isi(raster)
-    psth_measure = utils.measure_psth(raster_full, binsize,\
+    psth_count, psth_bin = utils.measure_psth(raster_full, cfg.DATASET.psth_binsize,\
             obs_window_range[1]-obs_window_range[0], samplerate)
+    cond_psth, cond_psth_bin = utils.psth_speed_conditional(cfg, params, raster_full, stimuli_speed)
 
     # resampling with wider bins and fitting exponential curve to og data
     raster, raster_full = utils.resample(raster, raster_full, binsize, samplerate) #resize bins
@@ -121,9 +123,11 @@ def estimate_ogtau(cfg, params, foldername):
     # delay = np.linspace(delayrange[0], delayrange[1], 20)
     delay = [i for i in range(delayrange[0], delayrange[1])] #range of delays
     params['delay_times'] = [d*binsize for d in delay]
-    mfr = utils.calculate_meanfiringrate(raster, sampletimespan) #mean firing rate
+    mfr = utils.calculate_meanfiringrate_test(raster, obs_window_range) #mean firing rate
+
     rv_mean = np.mean(raster_full)
     autocor = utils.autocorrelation(raster_full, delay) #autocorr calculation
+
     b=(binsize*mfr)**2
     tau, a = utils.leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize, b)#least sq fit 
     print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
@@ -165,7 +169,10 @@ def estimate_ogtau(cfg, params, foldername):
             'raster':raster, 
             'raster_full':raster_full, 
             'isi_list':isi_list,
-            'psth_measure':psth_measure,
+            'psth_spike_count':psth_count,
+            'psth_time_bin':psth_bin,
+            'cond_psth': cond_psth, 
+            'cond_psth_bin':cond_psth_bin, 
             'delays':np.asarray(delay)*binsize,
             'mean_autocorr':autocor, 
             'mean_fr':mfr, 
@@ -173,6 +180,10 @@ def estimate_ogtau(cfg, params, foldername):
             'dichgauss_est':dichgaussest,
             'fig_title':figtitle
         }
+    
+    print(raster_full.shape)
+    print("Num trials: {}, num spikes: {}, firing rate: {}, window duration: {}".format(\
+            raster_full.shape[0], np.sum(raster_full), mfr, raster_full.shape[1]))
 
     return output
 
@@ -204,53 +215,64 @@ if(__name__=="__main__"):
     # # sampletimespan *= 10 #100ms time units
 
     # single datafile test
-    trial_neuron = "20200717-xxx999-002-001"
-    trial_foldernum = 3
-    trial_hemi = "Calyx"
-    foldername = cfg.DATASET.foldername.format(trial_foldernum, trial_hemi) +\
-            trial_neuron + "/"
-    figloc = "../outputs/{}.pdf".format(trial_neuron+"_single_neuron")
-    estimate_outputs = estimate_ogtau(cfg, params, foldername)
+    # trial_neuron = "20200717-xxx999-002-001"
+    # trial_foldernum = 3
+    # trial_hemi = "Calyx"
 
-    # raster, raster_full, isi_list, psth_measure, delay, autocor, mfr, ogest, dichgaussest, figtitle\
-            # = estimate_ogtau(foldername, dataset_type, params)
-    # plot_autocor(autocor, delay, ogest[0], ogest[1], ogest[2], figloc)
-    # plot_summary_single_neuron(autocor, delay, raster, isi_list, psth_measure,\
-            # ogest, dichgaussest, foldername, figloc)
-    plotting.plot_summary_single_neuron(cfg, params, estimate_outputs, foldername, figloc)
+    # trial_neuron = "20081104-002"
+    # trial_foldernum = 1
+    # trial_hemi = "Calyx"
+    # foldername = cfg.DATASET.foldername.format(trial_foldernum, trial_hemi) +\
+            # trial_neuron + "/"
+    # figloc = "../outputs/{}.pdf".format(trial_neuron+"_single_neuron")
+    # estimate_outputs = estimate_ogtau(cfg, params, foldername)
 
-    # dichgaussests = []
-    # labels = []
-    # mfrs = []
-    # foldernames = []
-    # cortexsides = []
-    # filenames = []
-    # for dfs in datafiles:
-        # for ctxs in cortexside:
-            # fname = foldername.format(dfs, ctxs)
-            # foldersinfname = os.listdir(fname)
-            # for f in foldersinfname:
-                # foldernames.append(fname+f+'/')
-                # cortexsides.append(ctxs)
-                # filenames.append(f)
+    # # plot_autocor(autocor, delay, ogest[0], ogest[1], ogest[2], figloc)
+    # plotting.plot_summary_single_neuron(cfg, params, estimate_outputs, foldername, figloc)
 
-    # datafiles = {'folderloc':foldernames, 'label':cortexsides, 'filenames':filenames}
+    estimated_outputs = []
+    labels = []
+    foldernames = []
+    cortexsides = []
+    filenames = []
+    for dfs in cfg.DATASET.datafiles:
+        for ctxs in cfg.DATASET.cortexside:
+            fname = cfg.DATASET.foldername.format(dfs, ctxs)
+            foldersinfname = os.listdir(fname)
+            for f in foldersinfname:
+                foldernames.append(fname+f+'/')
+                cortexsides.append(ctxs)
+                filenames.append(f)
 
-    # for count, dfs in enumerate(datafiles['folderloc']):
-        # print("dfs", dfs)
-        # print("label: ", datafiles['label'][count])
-        # labels.append(datafiles['label'][count])
-        # raster, raster_full, isi_list, psth_measure, autocor, mfr, ogest, dichgaussest, figtitle =\
-            # estimate_ogtau(dfs, dataset_type, params)
-        # # raster, raster_full, isi_list, psth_measure, autocor, mfr, ogest, dichgaussest,\
-            # # figtitle = testingfunc_onetrial(dfs, dataset_type, params, datafiles['filenames'][count])
-        # mfrs.append(mfr)
-        # dichgaussests.append(dichgaussest)
-        # figloc = "../outputs/{}.pdf".format(datafiles['filenames'][count])
+    datafiles = {'folderloc':foldernames, 'label':cortexsides, 'filenames':filenames}
+
+    for count, dfs in enumerate(datafiles['folderloc']):
+        print("dfs", dfs)
+        print("label: ", datafiles['label'][count])
+        if(count==2):
+            break
+        labels.append(datafiles['label'][count])
+        estimate_output = estimate_ogtau(cfg, params, dfs)
+        estimated_outputs.append(estimate_output)
         # figtitle = foldername
-        # plot_neuronsummary(autocor, params, raster, isi_list, psth_measure, ogest, dichgaussest,\
-                # figtitle, figloc)
 
+    pickle_data = {
+            'outputs':estimated_outputs, 
+            'labels':labels,
+            'datafile':datafiles,
+            'cfg': cfg, 
+            'params': params
+            }
+
+    pickle_file = open('../outputs/tau_est_summary_dump.pkl', 'wb')
+    pickle.dump(pickle_data, pickle_file)
+
+    pickle_file = open('../outputs/tau_est_summary_dump.pkl', 'rb')
+    pickle_data = pickle.load(pickle_file)
+
+    figloc = "../outputs/all_neurons_summary.pdf"
+    plotting.plot_summary_all_neurons(pickle_data['cfg'], pickle_data['params'],\
+            pickle_data['outputs'], figloc)
 
 
 

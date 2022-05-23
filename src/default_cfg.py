@@ -24,6 +24,7 @@ _C.DATASET.del_time = 0.001 #s
 # for a single trial dataset
 _C.DATASET.sampletimespan = [0, 1.640]#s
 # _C.DATASET.sampletimespan = [0, 150] #sec
+_C.DATASET.psth_binsize = 0.02 #s
 
 # for STRF analysis
 _C.DATASET.strf_timebinsize = 0.001#s = 1ms
