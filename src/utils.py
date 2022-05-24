@@ -159,7 +159,7 @@ def leastsquares_fit(autocor, delay, b, p0=[1,1]):
     xdata = np.array(delay)
     exc_int = exponentialClass()
     exc_int.b = b
-    optval, optcov = curve_fit(exc_int.exponential_func, xdata, autocor, p0) 
+    optval, optcov = curve_fit(exc_int.exponential_func, xdata, autocor, p0, maxfev=1000) 
     return optval
 
 def leastsquares_fit_doubleexp(autocor, delay, b, p0=[1,1,1,1]):
@@ -273,7 +273,6 @@ class dichotomizedgaussian_surrogate():
 def autocorrelation(sig, delay, biased=False):
     raw_autocorr = raw_autocorrelation(sig, delay, biased)
     mean_autocorr = np.mean(raw_autocorr, 0)
-    print(mean_autocorr.shape)
     return  mean_autocorr
 
 def raw_autocorrelation(sig, delays, biased=False):

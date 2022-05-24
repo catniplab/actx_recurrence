@@ -24,6 +24,7 @@ from utils import raster_full_to_events, calculate_meanfiringrate, exponentialCl
 from plotting import plot_autocor, plot_utauests, plot_histdata,\
     plot_rasterpsth, plot_spectrogram, plot_psd, plot_psds
 import src.plotting as plotting
+import src.variables as variables
 
 def testingfunc(foldername, dataset_type, filename):
     #params
@@ -117,6 +118,7 @@ def estimate_ogtau(cfg, params, foldername):
 
     # resampling with wider bins and fitting exponential curve to og data
     raster, raster_full = utils.resample(raster, raster_full, binsize, samplerate) #resize bins
+
     # stimuli = spectral_resample(stimuli_spectrogram, binsize, samplerate)
     # locspec='../outputs/spectogram.pdf'
     # plot_spectrogram(stimuli, locspec)
@@ -128,8 +130,10 @@ def estimate_ogtau(cfg, params, foldername):
     rv_mean = np.mean(raster_full)
     autocor = utils.autocorrelation(raster_full, delay) #autocorr calculation
 
+    p0 = [1, 0.01]
     b=(binsize*mfr)**2
-    tau, a = utils.leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize, b)#least sq fit 
+    tau, a = utils.leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize, b, p0)
+    #least sq fit 
     print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
     ogest = [a, b, tau]
 
@@ -215,13 +219,18 @@ if(__name__=="__main__"):
     # # sampletimespan *= 10 #100ms time units
 
     # single datafile test
-    # trial_neuron = "20200717-xxx999-002-001"
+    # trial_neuron = "20200718-xxx999-001-002"
     # trial_foldernum = 3
     # trial_hemi = "Calyx"
+
+    # trial_neuron = "20200708-xxx999-003-003"
+    # trial_foldernum = 3
+    # trial_hemi = "Thelo"
 
     # trial_neuron = "20081104-002"
     # trial_foldernum = 1
     # trial_hemi = "Calyx"
+
     # foldername = cfg.DATASET.foldername.format(trial_foldernum, trial_hemi) +\
             # trial_neuron + "/"
     # figloc = "../outputs/{}.pdf".format(trial_neuron+"_single_neuron")
@@ -249,8 +258,11 @@ if(__name__=="__main__"):
     for count, dfs in enumerate(datafiles['folderloc']):
         print("dfs", dfs)
         print("label: ", datafiles['label'][count])
-        if(count==2):
-            break
+        if(datafiles['filenames'][count] in variables.neurons_to_remove):
+            print("skipping neuron ", dfs)
+            continue
+        # if(count==2):
+            # break
         labels.append(datafiles['label'][count])
         estimate_output = estimate_ogtau(cfg, params, dfs)
         estimated_outputs.append(estimate_output)

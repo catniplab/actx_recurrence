@@ -166,6 +166,59 @@ class Data_Loading():
         raster = np.asarray(raster)
         return raster, raster_full
 
+    def empty_stimuli_raster(self, cfg, params, spikes_df):
+        # stimuli_speed = 0 
+        stim_speed = 0
+        sample_rate = cfg.DATASET.samplerate
+        minduration = cfg.DATASET.trial_minduration
+        rng = cfg.DATASET.window_range
+        numfakestimulis = round(spikes_df['timestamps'].values[-1]//(rng[1]-rng[0])) + 2
+        # print(numfakestimulis)
+        # print("fake stimulus num compare -- ", spikes_df['timestamps'].values[-1],\
+                # (numfakestimulis-1)*(rng[1]-rng[0]))
+
+        triggertimes = []
+        stimuli_speed = []
+
+        for i in range(numfakestimulis-1):
+            stimuli_trigger = i*(rng[1]-rng[0])
+            triggertimes.append([stimuli_trigger, stimuli_trigger+(rng[1]-rng[0])])
+            stimuli_speed.append(stim_speed)
+
+        n_triggers = len(triggertimes)
+        start_samples = round(0*sample_rate)
+        stop_samples = round((rng[1]-rng[0])*sample_rate)
+        n_samples = stop_samples - start_samples
+        raster_full = np.zeros([n_triggers, n_samples])
+        raster = []
+        empty_rows = []
+
+        total_spikes = 0
+
+        for i in range(n_triggers):
+            spikes = spikes_df.loc[(spikes_df['timestamps']>=(triggertimes[i][0])) &
+                                    (spikes_df['timestamps']<triggertimes[i][1])]
+            spikes = spikes['timestamps'].to_numpy()
+            # print(i, spikes, triggertimes[i])
+            if(spikes.shape[0] > 0):
+                # raster.append(spike_pos/sample_rate)
+                spike_pos = np.floor((spikes - triggertimes[i][0])*sample_rate)
+                                # - start_samples
+                if((spike_pos>=n_samples).any()):
+                    print("spike check in dataloader base: ", spike_pos, start_samples,\
+                            triggertimes[i][0], spikes)
+                raster_full[i, spike_pos.astype(int)] = 1
+                spike_pos = np.floor((spikes - triggertimes[i][0])*sample_rate) 
+                total_spikes += len(spike_pos)
+                raster.append(spike_pos/sample_rate)
+            else:
+                empty_rows.append(i)
+                raster.append([])
+
+        raster = np.asarray(raster)
+        print(f'for the empty stimuli dataset-- total spikes: {total_spikes}')
+        return raster, raster_full, stimuli_speed
+
     def get_event_raster(self, cfg, params, stimuli_df, spikes_df):
         """
             It selects all the events which are atleast $minduration$ long
@@ -184,6 +237,10 @@ class Data_Loading():
         stimuli_speed = []
         non_fmsweeps = 0
         del_time = cfg.DATASET.del_time
+
+        if(stimuli_df.shape[0] == 0):
+            print("empty stimulus")
+            return self.empty_stimuli_raster(cfg, params, spikes_df)
 
         # find all trials which are minduration long
         for i in range(numstimulis-1):
