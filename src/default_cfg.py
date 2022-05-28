@@ -39,6 +39,9 @@ _C.TRAIN = CN()
 _C.TRAIN.lr = 0.01
 _C.TRAIN.batchsize = 32
 _C.TRAIN.epochs = 1
+# _C.TRAIN.tau0 = [1e-3, 1e-2, 1e-1, 1, 10, 10e2, 10e3, 10e4, 10e5, 10e6, 10e7]
+_C.TRAIN.tau0 = [1e-2, 1e-1, 1, 10, 10e2, 10e3, 10e4]
+_C.TRAIN.a0 = [1e-2, 1e-1, 1, 10, 10e2, 10e3, 10e4]
 
 _C.REGULARIZE = CN()
 _C.REGULARIZE.history_reg = 0.001

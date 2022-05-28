@@ -4,6 +4,7 @@ import scipy
 from scipy.optimize import curve_fit
 from scipy.stats import norm, multivariate_normal
 from scipy.signal import fftconvolve
+import itertools
 
 from src.dich_gauss.dichot_gauss import DichotGauss 
 from src.dich_gauss.optim_dichot_gauss import get_bivargauss_cdf, find_root_bisection
@@ -34,7 +35,7 @@ def raster_full_to_events(raster_full, samplerate, sampletimespan):
     raster = []
     for i in range(raster_full.shape[0]):
         rowidx=np.array(np.nonzero(raster_full[i]))
-        raster.append((rowidx/raster_full.shape[1])*(sampletimespan[1]-sampletimespan[0])+sampletimespan[0])
+        raster.append((rowidx/raster_full.shape[1])*(sampletimespan[1]-sampletimespan[0]))
     return raster
 
 def calculate_meanfiringrate(raster, sampletime):
@@ -54,7 +55,7 @@ def calculate_meanfiringrate_test(raster, sampletime):
 def calculate_meanfiringrate_test2(raster, raster_full, sampletime):
     mfs_s = []
     for i in range(len(raster)):
-       mfs_s.append(np.sum(np.where(raster_full[i]>0, 1, 0)))#spike firing count across trials
+       mfs_s.append(np.sum(np.where(raster_full[i]>0, raster_full[i], 0)))#spike firing count across trials
     mfs_mean = np.mean(mfs_s) #mean across trials on number of spikes
     mfs = mfs_mean/(sampletime[1]-sampletime[0])
     return mfs 
@@ -80,8 +81,24 @@ def calculate_coeffvar(isi):
     return coeffvar
 
 class exponentialClass:
+    # fixed b value
     def __init__(self):
         self.b = 0
+
+    def least_squares_loss(self, theta, t,  y):
+        tau, a = theta
+        ls_loss = np.sum((self.exponential_func(t, tau, a)-y)**2)
+        return ls_loss
+    
+    def jac_least_squares(self, theta, t, y):
+        tau, a = theta
+        jac = [0, 0]
+        res = self.exponential_func(t, tau, a)-y
+        diff_tau = (a * t * np.exp(-t/tau))/tau**2
+        diff_a = np.exp(-t/tau)
+        jac[0] = np.sum(2*res*diff_tau)
+        jac[1] = np.sum(2*res*diff_a)
+        return jac
 
     def exponential_func(self, t, tau, a):
         return a * np.exp(-t/tau) + self.b
@@ -155,12 +172,33 @@ def resample(raster, raster_full, binsize, og_samplerate):
         new_raster.append(new_raster_tmp)
     return new_raster, new_raster_full
 
-def leastsquares_fit(autocor, delay, b, p0=[1,1]):
+def leastsquares_fit(autocor, delay, b, tau0, a0):
+    # function fix -- 
+    # add a minimize function for curve fitting
+    # do a for loop over all initializations for optimizations
+    # call the least squares values and collect the loss values
+    # select the fit with lowest loss value
+
     xdata = np.array(delay)
     exc_int = exponentialClass()
     exc_int.b = b
-    optval, optcov = curve_fit(exc_int.exponential_func, xdata, autocor, p0, maxfev=1000) 
-    return optval
+    min_err = 1e8
+    best_theta = None
+    for theta0 in itertools.product(tau0, a0):
+        res = scipy.optimize.minimize(
+                    fun = exc_int.least_squares_loss,
+                    jac = exc_int.jac_least_squares,
+                    x0 = theta0,
+                    args = (delay, autocor),
+                    method = 'L-BFGS-B',
+                    tol=1e-8
+                )
+        if((res['fun'] < min_err) and (res['success'])):
+            min_err = res['fun']
+            best_theta = res['x']
+
+    # optval, optcov = curve_fit(exc_int.exponential_func, xdata, autocor, p0, maxfev=1000) 
+    return best_theta
 
 def leastsquares_fit_doubleexp(autocor, delay, b, p0=[1,1,1,1]):
     xdata = np.array(delay)
@@ -171,15 +209,17 @@ def leastsquares_fit_doubleexp(autocor, delay, b, p0=[1,1,1,1]):
     return optval
 
 class dichotomizedgaussian_surrogate():
-    def __init__(self, mfr, autocorr, data, delay):
+    def __init__(self, cfg, mfr, autocorr, data, delay):
+        self.cfg = cfg
         self.data = data
         self.gauss_mean = self.calculate_gmean(mfr) #recheck mfr formulation in the code
         self.gauss_cov = self.calculate_gcov(mfr, autocorr, delay)
-        # print("gauss mean and cov", self.gauss_mean, self.gauss_corr)
+        self.gen_data = self.dichotomized_gauss()
+        print("gauss mean and cov", self.gauss_mean)
 
     def calculate_gmean(self, mfr):
         # mfr[mfr==0.0]+=1e-4
-        return norm.ppf(mfr)
+        return norm.ppf(mfr * self.cfg.DATASET.binsize)
 
     def calculate_gcov(self, mfr, autocorr, delay):
         gauss_cov = np.zeros(len(delay)+1)
@@ -200,7 +240,6 @@ class dichotomizedgaussian_surrogate():
         gen_data[gen_dichgauss>0]=1
         gen_data[gen_dichgauss<=0]=0
         # print("size of gen data", gen_data.shape, self.data.shape)
-        self.gen_data = gen_data
         return gen_data
 
     def dich_autocorrelation(self, data, delay):
@@ -211,33 +250,20 @@ class dichotomizedgaussian_surrogate():
             autocor.append(acr)
         return autocor
 
-    # def dich_autocorrelation(self, sig, delay):
-        # autocor = []
-        # print(sig.shape)
-        # for d in delay:
-            # # shift the signal
-            # sig_delayed = np.zeros_like(sig)
-            # if(d>0):
-                # sig_delayed[:, d:] = sig[:, 0:-d]
-            # else:
-                # sig_delayed = sig
-            # # calculate the correlation
-            # # Y_mean = np.mean(sig, 0)
-            # acr = np.sum(sig * sig_delayed, 0)/(sig.shape[1])
-            # acr = np.sum(acr, 0)/sig.shape[0]
-            # autocor.append(acr)
-        # return autocor
-
-    def estimate_tau(self, binsize, samplerate, delayrange, sampletimespan, p0=[0,0]):
-        raster = raster_full_to_events(self.gen_data, samplerate, sampletimespan)
+    def estimate_tau(self, binsize, samplerate, delayrange, sampletimespan, tau0, a0):
+        raster = raster_full_to_events(self.gen_data[:,:,0], samplerate, sampletimespan)
         # delay = np.linspace(delayrange[0], delayrange[1], 20)
         delay = [i for i in range(delayrange[0], delayrange[1])]#range of delays
-        mfr = calculate_meanfiringrate(raster, sampletimespan)#mean firing rate
+        # mfr = calculate_meanfiringrate(raster, sampletimespan)#mean firing rate
+        mfr = calculate_meanfiringrate_test2(raster, self.gen_data[:,:,0], sampletimespan)
         autocor = self.dich_autocorrelation(self.gen_data, delay)#autocorr calculation
+        # autocor = autocorrelation(self.gen_data[:,:,0], delay)#autocorr calculation
         b=(binsize*mfr)**2
-        tau, a = leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize, b, p0)#least sq fit 
+        tau, a = leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize,\
+                b, tau0, a0)#least sq fit 
+
         # plot_autocor(np.array(autocor), np.asarray(delay)*binsize, a, b, tau)#plotting autocorr
-        # print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
+        print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
         return tau, a
     
     def estimate_tau_doubleexp(self, binsize, samplerate, delayrange, sampletimespan, p0=[0,0,0,0]):

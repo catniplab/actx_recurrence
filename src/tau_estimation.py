@@ -130,9 +130,9 @@ def estimate_ogtau(cfg, params, foldername):
     rv_mean = np.mean(raster_full)
     autocor = utils.autocorrelation(raster_full, delay) #autocorr calculation
 
-    p0 = [1, 0.01]
     b=(binsize*mfr)**2
-    tau, a = utils.leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize, b, p0)
+    tau, a = utils.leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize, b,\
+            cfg.TRAIN.tau0, cfg.TRAIN.a0)
     #least sq fit 
     print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
     ogest = [a, b, tau]
@@ -145,9 +145,11 @@ def estimate_ogtau(cfg, params, foldername):
     surrogate_as = []
     surr_iters = 400
     for i in range(surr_iters):
-        dgauss_surr = dichotomizedgaussian_surrogate(rv_mean, autocor, raster_full, delay)
+        print("surrogate number -- ", i)
+        dgauss_surr = dichotomizedgaussian_surrogate(cfg, mfr, autocor, raster_full, delay)
         _ = dgauss_surr.dichotomized_gauss()
-        tau_est, a_est = dgauss_surr.estimate_tau(binsize, samplerate, delayrange, sampletimespan)
+        tau_est, a_est = dgauss_surr.estimate_tau(binsize, samplerate, delayrange,\
+                obs_window_range, cfg.TRAIN.tau0, cfg.TRAIN.a0)
         surrogate_taus.append(tau_est)
         surrogate_as.append(a_est)
 
@@ -155,9 +157,9 @@ def estimate_ogtau(cfg, params, foldername):
     # plot_histdata(surrogate_as)
 
     surrogate_taus = np.array(surrogate_taus)
-    params = scipy.stats.lognorm.fit(surrogate_taus)
-    bias = params[0]-np.log(tau)
-    std_tau = params[1]
+    surr_tau_params = scipy.stats.lognorm.fit(surrogate_taus)
+    bias = surr_tau_params[0]-np.log(tau)
+    std_tau = surr_tau_params[1]
     # print(np.exp(params[0]))
     logunbiasedtau = np.log(tau) - bias
     a_est = np.mean(surrogate_as)
@@ -191,33 +193,7 @@ def estimate_ogtau(cfg, params, foldername):
 
     return output
 
-if(__name__=="__main__"):
-    # configuration
-    cfg = get_cfg_defaults()
-    cfg.freeze()
-
-    # extra params if needed
-    params = {}
-
-    # prestrf dataset
-    # foldername = "../data/prestrf_data/ACx_data_{}/ACx{}/"
-    # datafiles = [1,2,3]
-    # cortexside = ["Calyx", "Thelo"]
-    # dataset_type = 'prestrf'
-
-    # #params
-    # params = {}
-    # params['binsize'] = 0.02#s = 20ms
-    # params['delayrange'] = [0, 50]#units
-    # params['sample_rate'] = 10000#samples per second
-    # sampletimespan = [0, 1.640]#s
-    # params['rng'] = [0, 1.640]
-    # params['sampletimespan'] = [100, 300]
-    # params['minduration'] = 1.640
-    # params['freqrange'] = [0, 45000]
-    # params['freqbin'] = 10 #heuristic/random?
-    # # sampletimespan *= 10 #100ms time units
-
+def single_neuron_test(cfg, params):
     # single datafile test
     # trial_neuron = "20200718-xxx999-001-002"
     # trial_foldernum = 3
@@ -227,18 +203,19 @@ if(__name__=="__main__"):
     # trial_foldernum = 3
     # trial_hemi = "Thelo"
 
-    # trial_neuron = "20081104-002"
-    # trial_foldernum = 1
-    # trial_hemi = "Calyx"
+    trial_neuron = "20081104-002"
+    trial_foldernum = 1
+    trial_hemi = "Calyx"
 
-    # foldername = cfg.DATASET.foldername.format(trial_foldernum, trial_hemi) +\
-            # trial_neuron + "/"
-    # figloc = "../outputs/{}.pdf".format(trial_neuron+"_single_neuron")
-    # estimate_outputs = estimate_ogtau(cfg, params, foldername)
+    foldername = cfg.DATASET.foldername.format(trial_foldernum, trial_hemi) +\
+            trial_neuron + "/"
+    figloc = "../outputs/{}.pdf".format(trial_neuron+"_single_neuron")
+    estimate_outputs = estimate_ogtau(cfg, params, foldername)
 
-    # # plot_autocor(autocor, delay, ogest[0], ogest[1], ogest[2], figloc)
-    # plotting.plot_summary_single_neuron(cfg, params, estimate_outputs, foldername, figloc)
+    # plot_autocor(autocor, delay, ogest[0], ogest[1], ogest[2], figloc)
+    plotting.plot_summary_single_neuron(cfg, params, estimate_outputs, foldername, figloc)
 
+def all_neuron_test(cfg, params):
     estimated_outputs = []
     labels = []
     foldernames = []
@@ -285,6 +262,38 @@ if(__name__=="__main__"):
     figloc = "../outputs/all_neurons_summary.pdf"
     plotting.plot_summary_all_neurons(pickle_data['cfg'], pickle_data['params'],\
             pickle_data['outputs'], figloc)
+
+if(__name__=="__main__"):
+    # configuration
+    cfg = get_cfg_defaults()
+    cfg.freeze()
+
+    # extra params if needed
+    params = {}
+
+    # prestrf dataset
+    # foldername = "../data/prestrf_data/ACx_data_{}/ACx{}/"
+    # datafiles = [1,2,3]
+    # cortexside = ["Calyx", "Thelo"]
+    # dataset_type = 'prestrf'
+
+    # #params
+    # params = {}
+    # params['binsize'] = 0.02#s = 20ms
+    # params['delayrange'] = [0, 50]#units
+    # params['sample_rate'] = 10000#samples per second
+    # sampletimespan = [0, 1.640]#s
+    # params['rng'] = [0, 1.640]
+    # params['sampletimespan'] = [100, 300]
+    # params['minduration'] = 1.640
+    # params['freqrange'] = [0, 45000]
+    # params['freqbin'] = 10 #heuristic/random?
+    # # sampletimespan *= 10 #100ms time units
+
+    single_neuron_test(cfg, params)
+    # all_neuron_test(cfg, params)
+
+
 
 
 
