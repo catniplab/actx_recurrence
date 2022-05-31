@@ -1,6 +1,8 @@
 import numpy as np
 from scipy.stats import norm, multivariate_normal as mnorm
 from scipy.special import erfinv, erf
+import scipy.optimize
+import scipy.linalg
 # from IPython.display import clear_output
 
 import warnings
@@ -9,6 +11,21 @@ import warnings
 class WarningDGOpt(UserWarning):
     pass
 
+
+def find_gauss_covar(data_means, gauss_means, data_covar, tol=1e-10):
+    res = scipy.optimize.minimize(
+                fun = function,
+                # jac = exc_int.jac_least_squares,
+                x0 = (0.1),
+                # x0 = theta0,
+                args = (data_means, gauss_means, data_covar),
+                method = 'L-BFGS-B',
+                tol=tol,
+                bounds=[(-0.9999, 0.9999)],
+                # options=dict(ftol=1e-30, gtol=1e-20, maxiter=100)
+                options=dict(ftol=1e-30, maxiter=50)
+            )
+    return res['x']
 
 def get_bivargauss_cdf(vals, corr_coef):
     """
@@ -24,9 +41,11 @@ def get_bivargauss_cdf(vals, corr_coef):
     cov = np.eye(2)
     cov[1, 0], cov[0, 1] = corr_coef, corr_coef
     cdf = mnorm.cdf(vals, mean=[0., 0.], cov=cov)
+    # print("cdf val: ", cdf, corr_coef)
     return cdf
 
 
+# def function(gauss_covar, data_means, gauss_means, data_covar):
 def function(data_means, gauss_means, data_covar, gauss_covar):
     """
     Computes the pairwise covariance eqn for root finding algorithm.
@@ -42,8 +61,14 @@ def function(data_means, gauss_means, data_covar, gauss_covar):
     """
     bivar_gauss_cdf = np.mean(get_bivargauss_cdf(vals=np.array(gauss_means).T,
                                                  corr_coef=gauss_covar))
+
+    # print("cdf calculations: ", bivar_gauss_cdf, np.prod(data_means), data_covar)
     return bivar_gauss_cdf - np.prod(data_means) - data_covar
 
+    # bivar_gauss_cdf = np.mean(get_bivargauss_cdf(vals=np.array(data_means).T,
+                                                 # corr_coef=gauss_covar))
+    # print("cdf calculations: ", bivar_gauss_cdf,  data_covar)
+    # return data_covar - bivar_gauss_cdf 
 
 def find_root_bisection(*eqn_input, eqn=function, maxiters=1000, tol=1e-10):
     """

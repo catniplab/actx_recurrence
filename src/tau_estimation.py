@@ -137,18 +137,26 @@ def estimate_ogtau(cfg, params, foldername):
     print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
     ogest = [a, b, tau]
 
+    print("autocorr of the actual spike train: ", autocor)
+
     # plot_autocor(np.array(autocor), np.asarray(delay)*binsize, a, b, tau)#plotting autocorr
     # return [a, b, tau, mfr, binsize, delay, binsize, autocor]
+
+    # capture the exponential autocorrelation fit func value
+    exp_class = utils.exponentialClass()
+    exp_class.b = b
+    autocorr_exp = exp_class.exponential_func(np.asarray(delay)*binsize, tau, a)
+    print("autocorr from the exponential delay fit: ", autocorr_exp)
 
     ## create surrogate and estimate unbiased tau
     surrogate_taus = []
     surrogate_as = []
-    surr_iters = 400
+    surr_iters = 1
     for i in range(surr_iters):
-        print("surrogate number -- ", i)
-        dgauss_surr = dichotomizedgaussian_surrogate(cfg, mfr, autocor, raster_full, delay)
-        _ = dgauss_surr.dichotomized_gauss()
-        tau_est, a_est = dgauss_surr.estimate_tau(binsize, samplerate, delayrange,\
+        if(i%100==0):
+            print("surrogate number -- ", i)
+        dgauss_surr = dichotomizedgaussian_surrogate(cfg, mfr, autocorr_exp, raster_full, delay)
+        tau_est, a_est = dgauss_surr.estimate_tau(binsize, samplerate, delay,\
                 obs_window_range, cfg.TRAIN.tau0, cfg.TRAIN.a0)
         surrogate_taus.append(tau_est)
         surrogate_as.append(a_est)
@@ -158,16 +166,20 @@ def estimate_ogtau(cfg, params, foldername):
 
     surrogate_taus = np.array(surrogate_taus)
     surr_tau_params = scipy.stats.lognorm.fit(surrogate_taus)
-    bias = surr_tau_params[0]-np.log(tau)
-    std_tau = surr_tau_params[1]
-    # print(np.exp(params[0]))
-    logunbiasedtau = np.log(tau) - bias
+    logtau_est_biased = np.log(surr_tau_params[2])
+    logtau_est_std = surr_tau_params[1]
+    bias_est = logtau_est_biased - np.log(tau)
+    # print("surr_tau_params: ", surr_tau_params)
+    logunbiasedtau = np.log(tau) - bias_est
     a_est = np.mean(surrogate_as)
 
     # intergrate the posteriors
-    dichgaussest = [a_est, b, np.exp(logunbiasedtau), std_tau]
-    print("dich gaus estimates a={}, b={}, tau={}, std={}, bias={}".format(a_est, b,
-        np.exp(logunbiasedtau), std_tau, bias))
+    dichgaussest = [a_est, b, np.exp(logunbiasedtau), logtau_est_std]
+    print("dich gauss estimates: a={}, b={}, tau_est = {}".format(a_est, b, np.exp(logunbiasedtau)))
+    print("unbiasing outputs: biased_logtau = {}, unbiased_logtau = {},\
+            biased_logtauest = {}".format(\
+            np.log(tau), logunbiasedtau, logtau_est_biased))
+
     figtitle = foldername + " mfr={} ".format(mfr)+" mean ISI={} "\
         .format(np.mean(isi_list))+" tau est={} ".format(tau)
 
@@ -203,7 +215,7 @@ def single_neuron_test(cfg, params):
     # trial_foldernum = 3
     # trial_hemi = "Thelo"
 
-    trial_neuron = "20081104-002"
+    trial_neuron = "20190904-001-016"
     trial_foldernum = 1
     trial_hemi = "Calyx"
 

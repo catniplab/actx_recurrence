@@ -7,7 +7,8 @@ from scipy.signal import fftconvolve
 import itertools
 
 from src.dich_gauss.dichot_gauss import DichotGauss 
-from src.dich_gauss.optim_dichot_gauss import get_bivargauss_cdf, find_root_bisection
+from src.dich_gauss.optim_dichot_gauss import get_bivargauss_cdf, find_root_bisection,\
+            find_gauss_covar
 import matplotlib.pyplot as plt
 
 def check_and_create_dirs(path):
@@ -94,7 +95,7 @@ class exponentialClass:
         tau, a = theta
         jac = [0, 0]
         res = self.exponential_func(t, tau, a)-y
-        diff_tau = (a * t * np.exp(-t/tau))/tau**2
+        diff_tau = (a * t * np.exp(-t/tau))/(tau**2)
         diff_a = np.exp(-t/tau)
         jac[0] = np.sum(2*res*diff_tau)
         jac[1] = np.sum(2*res*diff_a)
@@ -180,24 +181,30 @@ def leastsquares_fit(autocor, delay, b, tau0, a0):
     # select the fit with lowest loss value
 
     xdata = np.array(delay)
-    exc_int = exponentialClass()
-    exc_int.b = b
     min_err = 1e8
     best_theta = None
     for theta0 in itertools.product(tau0, a0):
+        exc_int = exponentialClass()
+        exc_int.b = b
         res = scipy.optimize.minimize(
                     fun = exc_int.least_squares_loss,
                     jac = exc_int.jac_least_squares,
-                    x0 = theta0,
-                    args = (delay, autocor),
+                    x0 = np.array(theta0).copy(),
+                    # x0 = theta0,
+                    args = (xdata.copy(), autocor.copy()),
                     method = 'L-BFGS-B',
-                    tol=1e-8
+                    tol=1e-30,
+                    # options=dict(ftol=1e-30, gtol=1e-20, maxiter=100)
+                    options=dict(ftol=1e-30, maxiter=100)
                 )
         if((res['fun'] < min_err) and (res['success'])):
-            min_err = res['fun']
-            best_theta = res['x']
+            min_err = res.copy()['fun']
+            best_theta = res.copy()['x']
+            # print("optimization outputs: theta={}, loss={}, output={}, jac={}".format(\
+                    # theta0, res['fun'], best_theta, res['jac']))
 
     # optval, optcov = curve_fit(exc_int.exponential_func, xdata, autocor, p0, maxfev=1000) 
+    # print("re check best_theta: ", best_theta)
     return best_theta
 
 def leastsquares_fit_doubleexp(autocor, delay, b, p0=[1,1,1,1]):
@@ -215,30 +222,48 @@ class dichotomizedgaussian_surrogate():
         self.gauss_mean = self.calculate_gmean(mfr) #recheck mfr formulation in the code
         self.gauss_cov = self.calculate_gcov(mfr, autocorr, delay)
         self.gen_data = self.dichotomized_gauss()
-        print("gauss mean and cov", self.gauss_mean)
+        # print("gauss mean and cov", self.gauss_mean)
 
     def calculate_gmean(self, mfr):
         # mfr[mfr==0.0]+=1e-4
         return norm.ppf(mfr * self.cfg.DATASET.binsize)
 
     def calculate_gcov(self, mfr, autocorr, delay):
-        gauss_cov = np.zeros(len(delay)+1)
-        for d in range(len(delay)):
+        n_time = self.data.shape[1]
+        gauss_cov = np.zeros(n_time)
+        # gauss_cov[0] = mfr/len(delay)
+        mfr_perbin = mfr * self.cfg.DATASET.binsize
+        gauss_cov[0] = 1
+        # gauss_cov[0] = mfr_perbin*(1-mfr_perbin)
+
+        # convert autocorrelation to autocovariance?
+        # autocov = autocorr - mfr**2
+
+        for d in range(len(delay)-1):
             data_cov = np.eye(2)
-            data_cov[1,0], data_cov[0,1] = autocorr[d], autocorr[d]
-            x = find_root_bisection([mfr, mfr], [self.gauss_mean, self.gauss_mean], data_cov[1,0])
+            # print("autocor, gauss mean, mfr:", autocorr[d], self.gauss_mean, mfr_perbin)
+            # data_cov[1,0], data_cov[0,1] = autocorr[d], autocorr[d]
+            # data_cov[1,0], data_cov[0,1] = autocov[d], autocov[d]
+
+            x = find_root_bisection([mfr_perbin, mfr_perbin], [self.gauss_mean, self.gauss_mean]\
+                    , autocorr[d+1], tol=1e-10)
+            # x = find_gauss_covar([mfr, mfr], [self.gauss_mean, self.gauss_mean]\
+                    # , autocorr[d], tol=1e-20)
             # gauss_cov[1,0], gauss_cov[0,1] = x, x
+
             gauss_cov[d+1]=x
+
+        # print("gauss cov: ", gauss_cov)
         gauss_cov = scipy.linalg.toeplitz(gauss_cov)
         return gauss_cov
 
     def dichotomized_gauss(self):
         mean = np.repeat(self.gauss_mean, self.gauss_cov.shape[0])
         gen_dichgauss = np.random.multivariate_normal(mean=mean,
-                cov=self.gauss_cov, size=self.data.shape)
+                cov=self.gauss_cov, size=self.data.shape[0])
         gen_data = np.zeros_like(gen_dichgauss)
         gen_data[gen_dichgauss>0]=1
-        gen_data[gen_dichgauss<=0]=0
+        # gen_data[gen_dichgauss<=0]=0
         # print("size of gen data", gen_data.shape, self.data.shape)
         return gen_data
 
@@ -250,20 +275,22 @@ class dichotomizedgaussian_surrogate():
             autocor.append(acr)
         return autocor
 
-    def estimate_tau(self, binsize, samplerate, delayrange, sampletimespan, tau0, a0):
-        raster = raster_full_to_events(self.gen_data[:,:,0], samplerate, sampletimespan)
+    def estimate_tau(self, binsize, samplerate, delay, sampletimespan, tau0, a0):
+        raster = raster_full_to_events(self.gen_data, samplerate, sampletimespan)
         # delay = np.linspace(delayrange[0], delayrange[1], 20)
-        delay = [i for i in range(delayrange[0], delayrange[1])]#range of delays
+        # delay = [i for i in range(delayrange[0], delayrange[1])]#range of delays
         # mfr = calculate_meanfiringrate(raster, sampletimespan)#mean firing rate
-        mfr = calculate_meanfiringrate_test2(raster, self.gen_data[:,:,0], sampletimespan)
-        autocor = self.dich_autocorrelation(self.gen_data, delay)#autocorr calculation
-        # autocor = autocorrelation(self.gen_data[:,:,0], delay)#autocorr calculation
+        mfr = calculate_meanfiringrate_test2(raster, self.gen_data, sampletimespan)
+        # autocor = self.dich_autocorrelation(self.gen_data, delay)#autocorr calculation
+        autocor = autocorrelation(self.gen_data, delay)#autocorr calculation
+        # print("autocorrelation in dich gauss: ", autocor)
+
         b=(binsize*mfr)**2
         tau, a = leastsquares_fit(np.asarray(autocor), np.asarray(delay)*binsize,\
                 b, tau0, a0)#least sq fit 
 
         # plot_autocor(np.array(autocor), np.asarray(delay)*binsize, a, b, tau)#plotting autocorr
-        print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
+        # print("mfr = {}, b = {}, a={}, tau={}".format(mfr, b, a, tau))
         return tau, a
     
     def estimate_tau_doubleexp(self, binsize, samplerate, delayrange, sampletimespan, p0=[0,0,0,0]):
@@ -303,7 +330,9 @@ def autocorrelation(sig, delay, biased=False):
 
 def raw_autocorrelation(sig, delays, biased=False):
     raw_autocorr = raw_correlation(sig, sig, biased)
-    raw_autocorr = raw_autocorr[:, raw_autocorr.shape[1]//2:][:, :delays[-1]]
+    # print("max autocorr idx: ", np.argmax(raw_autocorr, axis=1), raw_autocorr.shape)
+    raw_autocorr = raw_autocorr[:, (raw_autocorr.shape[1]//2):][:, :len(delays)]
+    # print("max autocorr idx: ", np.argmax(raw_autocorr, axis=1), raw_autocorr.shape)
     return raw_autocorr
 
 def raw_correlation(x1, x2, biased=True):

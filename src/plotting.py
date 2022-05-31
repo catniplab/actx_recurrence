@@ -263,13 +263,13 @@ def plot_summary_single_neuron(cfg, params, estimate_outputs, foldername, figloc
         a, b, tau, std = estimate_outputs['dichgauss_est']
         exc_int = exponentialClass()
         exc_int.b = b
-        x_exponen = np.linspace(delay[0], delay[-1], 100)
+        x_exponen = np.linspace(delay[1], delay[-1], 100)
         y_exponen = exc_int.exponential_func(x_exponen, tau, a)
         y_exponenpstd = exc_int.exponential_func(x_exponen, tau+std, a)
         y_exponenmstd = exc_int.exponential_func(x_exponen, tau-std, a)
         ax[4].plot(x_exponen, y_exponen, 'g')
-        ax[4].fill_between(x_exponen, y_exponen - y_exponenmstd, y_exponen + y_exponenpstd,
-                     color='g', alpha=0.2)
+        # ax[4].fill_between(x_exponen, y_exponen - y_exponenmstd, y_exponen + y_exponenpstd,
+                     # color='g', alpha=0.2)
 
     ax[4].set_ylabel("autocorrelation value")
     ax[4].set_xlabel("delay")
