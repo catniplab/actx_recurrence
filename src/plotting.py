@@ -142,8 +142,9 @@ def plot_strf(strfweights, historyweights, timebinst, freqbins, timebin, freqs, 
     ax[1].set_ylabel('amplitude')
     
     plt.autoscale(tight=True)
-    plt.savefig(figloc, bbox_inches='tight')
-    plt.close()
+    plot.show()
+    # plt.savefig(figloc, bbox_inches='tight')
+    # plt.close()
 
 def plot_spectrogram(spectrogram, figloc):
     # plt.pcolormesh(np.transpose(spectrogram))

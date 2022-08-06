@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 # import scipy
 from scipy.optimize import curve_fit
-from scipy.stats import linregress
+from scipy.stats import linregress, ttest_ind, ranksums
 
 from sklearn.linear_model import LinearRegression
 import matplotlib.pyplot as plt
@@ -23,6 +23,7 @@ def check_tau_consistency(data_pd):
     # for each hemisphere's data -- get the median of Tau
     lefthem_taus_median = np.median(lefthem_taus)
     righthem_taus_median = np.median(righthem_taus)
+    leftvsright_taus_wilcoxon = ranksums(lefthem_taus, righthem_taus)
 
     # print("left hemi taus: ", lefthem_taus)
     # print("right hemi taus: ", righthem_taus)
@@ -30,6 +31,7 @@ def check_tau_consistency(data_pd):
         {righthem_idx.shape[0]}')
     print(f'left hemi tau median: {lefthem_taus_median}; right hemi tau median:\
         {righthem_taus_median}')
+    print(f'left vs right hemi tau wilcoxon {leftvsright_taus_wilcoxon}')
 
     # if output is too weird then prune out all the bad estimates of tau -- >300ms and <20ms and
     # then do average
@@ -53,6 +55,7 @@ def check_tau_consistency(data_pd):
 
     lefthem_tau_prunedmean = np.mean(lefthem_taus_pruned)
     righthem_tau_prunedmean = np.mean(righthem_taus_pruned)
+
     lefthem_tau_prunedstd = np.std(lefthem_taus_pruned)
     righthem_tau_prunedstd = np.std(righthem_taus_pruned)
 
@@ -68,6 +71,31 @@ def check_tau_consistency(data_pd):
     print(f'Right hemi -- pruned mean: {righthem_tau_prunedmean}, std err of mean:\
             {righthem_tau_pruned_stderror}, std dev: {righthem_tau_prunedstd},\
             n = {righthem_idx_pruned.shape[0]}')
+
+    # testing the wilcox and ttest on pruned tau values
+    # lefthem_taus_pruned = lefthem_idx_pruned['tau_corrected'].values
+    # righthem_taus_pruned = righthem_idx_pruned['tau_corrected'].values
+    n_left = len(lefthem_taus_pruned)
+    n_right = len(righthem_taus_pruned)
+    lefthem_tau_prunedmean = np.mean(lefthem_taus_pruned)
+    righthem_tau_prunedmean = np.mean(righthem_taus_pruned)
+    lefthem_tau_prunedstd = np.std(lefthem_taus_pruned)
+    righthem_tau_prunedstd = np.std(righthem_taus_pruned)
+    lefthem_tau_prunedmedian = np.median(lefthem_taus_pruned)
+    righthem_tau_prunedmedian = np.median(righthem_taus_pruned)
+
+    lefthem_tau_prunedstd = np.std(lefthem_taus_pruned)
+    righthem_tau_prunedstd = np.std(righthem_taus_pruned)
+    leftvsright_taus_pruned_ttest = ttest_ind(lefthem_taus_pruned, righthem_taus_pruned)
+    leftvsright_taus_pruned_wilcoxon = ranksums(lefthem_taus_pruned, righthem_taus_pruned)
+
+    print("for pruned estimated tau data: ")
+    print(f'left hemi -- inferred mean: {lefthem_tau_prunedmean}, std = {lefthem_tau_prunedstd}, n = {n_left}')
+    print(f'right hemi -- inferred mean: {righthem_tau_prunedmean}, std = {righthem_tau_prunedstd}, n = {n_right}')
+    print(f'left hemi -- inferred median: {lefthem_tau_prunedmedian}')
+    print(f'right hemi -- inferred median: {righthem_tau_prunedmedian}')
+    print(f'left vs right hemi tau pruned mean ttest {leftvsright_taus_pruned_ttest}')
+    print(f'left vs right hemi tau pruned mean wilcoxon {leftvsright_taus_pruned_wilcoxon}')
 
 def find_var_from_logvar(logvar, data):
     # form found using the moment generators
@@ -136,6 +164,8 @@ def check_fr_tau_corr(data_pd):
 
     lefthem_logtaus = np.mean(lefthem_idx['logtau_corrected'].values)
     righthem_logtaus = np.mean(righthem_idx['logtau_corrected'].values)
+    leftvsright_logtaus_ttest = ttest_ind(lefthem_idx['logtau_corrected'].values,\
+            righthem_idx['logtau_corrected'].values)
     lefthem_fr = np.mean(lefthem_idx['firing_rate'].values)
     righthem_fr = np.mean(righthem_idx['firing_rate'].values)
 
@@ -145,6 +175,7 @@ def check_fr_tau_corr(data_pd):
     print("for all corrected estimations without pruning")
     print(f'left hemi -- logtau corrected: {lefthem_logtaus}; logtau fitted: {lefthem_logtau_fitted}')
     print(f'right hemi -- logtau corrected: {righthem_logtaus}; logtau fitted: {righthem_logtau_fitted}')
+    print(f'left vs right hemi logtau corrected mean ttest {leftvsright_logtaus_ttest}')
 
     # checking with pruned inferences
     lefthem_idx_pruned = lefthem_idx.loc[(lefthem_idx['tau_corrected']<=300.0) &
@@ -161,6 +192,8 @@ def check_fr_tau_corr(data_pd):
     righthem_logtau_prunedmean = np.mean(righthem_logtaus_pruned)
     lefthem_logtau_prunedstd = np.std(lefthem_logtaus_pruned)
     righthem_logtau_prunedstd = np.std(righthem_logtaus_pruned)
+
+    leftvsright_logtaus_pruned_ttest = ttest_ind(lefthem_logtaus_pruned, righthem_logtaus_pruned)
 
     lefthem_logtau_fitted = linear_func(lefthem_fr_pruned, m_logtau, c_logtau)
     righthem_logtau_fitted = linear_func(righthem_fr_pruned, m_logtau, c_logtau)
@@ -181,9 +214,36 @@ def check_fr_tau_corr(data_pd):
     print(f'right hemi -- inferred mean: {righthem_logtau_prunedmean}; fitted:\
         {righthem_logtau_fitted}')
 
+    # testing the wilcox and ttest on pruned tau values
+    lefthem_taus_pruned = lefthem_idx_pruned['tau_corrected'].values
+    righthem_taus_pruned = righthem_idx_pruned['tau_corrected'].values
+    n_left = len(lefthem_taus_pruned)
+    n_right = len(righthem_taus_pruned)
+    lefthem_tau_prunedmean = np.mean(lefthem_taus_pruned)
+    righthem_tau_prunedmean = np.mean(righthem_taus_pruned)
+    lefthem_tau_prunedstd = np.std(lefthem_taus_pruned)
+    righthem_tau_prunedstd = np.std(righthem_taus_pruned)
+    lefthem_tau_prunedmedian = np.median(lefthem_taus_pruned)
+    righthem_tau_prunedmedian = np.median(righthem_taus_pruned)
+
+    lefthem_tau_prunedstd = np.std(lefthem_taus_pruned)
+    righthem_tau_prunedstd = np.std(righthem_taus_pruned)
+    leftvsright_taus_pruned_ttest = ttest_ind(lefthem_taus_pruned, righthem_taus_pruned)
+    leftvsright_taus_pruned_wilcoxon = ranksums(lefthem_taus_pruned, righthem_taus_pruned)
+
+    print("for pruned corrected tau data: ")
+    print(f'left hemi -- inferred mean: {lefthem_tau_prunedmean}, std: {lefthem_tau_prunedstd}, n = {n_left}')
+    print(f'right hemi -- inferred mean: {righthem_tau_prunedmean}, std: {righthem_tau_prunedstd}, n = {n_right}')
+    print(f'left hemi -- inferred median: {lefthem_tau_prunedmedian}')
+    print(f'right hemi -- inferred median: {righthem_tau_prunedmedian}')
+    print(f'left vs right hemi tau pruned mean ttest {leftvsright_taus_pruned_ttest}')
+    print(f'left vs right hemi tau pruned mean wilcoxon {leftvsright_taus_pruned_wilcoxon}')
+
+    # for prediction ceck from fr to logtau
     left_hem_tau_pred = np.mean(res_taus.predict(lefthem_idx['firing_rate'].values.reshape(-1,1)))
     right_hem_tau_pred = np.mean(res_taus.predict(righthem_idx['firing_rate'].values.reshape(-1,1)))
     pred_diff = np.abs(left_hem_tau_pred-right_hem_tau_pred)
+
     print(f'left hem mean tau predicted from fr = {left_hem_tau_pred},\
             right hem mean tau predicted from fr = {right_hem_tau_pred}')
     print(f'predicted difference : {pred_diff}')
@@ -330,6 +390,10 @@ def plot_frvstau_fancy(data, firing_rates, taus, res, res_tau, mean_plots, filen
     # plt.show()
     plt.close()
 
+def save_xlsx(data_pd, output_file):
+    file = open(output_file, 'wb')
+    data_pd.to_excel(file, sheet_name = 'log_firing_rate vs log_tau')
+
 if (__name__ == "__main__"):
     jsonfile = "../../data/data_tau_bias_variance.json"
     data_pd = read_json(jsonfile)
@@ -337,14 +401,14 @@ if (__name__ == "__main__"):
     # rows_to_be_dropped = ['ACx_data_1/ACxThelo/20180322-f002', 'ACx_data_1/ACxThelo/20180329-f003',\
             # 'ACx_data_3/ACxThelo/20180220f007', 'ACx_data_3/ACxThelo/20180310f003']
 
-    rows_to_be_dropped = ['ACx_data_1/ACxCalyx/20191010-004',
-                         'ACx_data_1/ACxThelo/20180322-f002',
-                         'ACx_data_1/ACxThelo/20180329-f003',
-                         'ACx_data_2/ACxThelo/20171208-f007',
-                         'ACx_data_3/ACxCalyx/20200718-xxx999-002-001',
-                         'ACx_data_3/ACxThelo/20180220f007',
-                         'ACx_data_3/ACxThelo/20180310f003',
-                         'ACx_data_3/ACxThelo/20200213-xxx999-005']
+    # rows_to_be_dropped = ['ACx_data_1/ACxCalyx/20191010-004',
+                         # 'ACx_data_1/ACxThelo/20180322-f002',
+                         # 'ACx_data_1/ACxThelo/20180329-f003',
+                         # 'ACx_data_2/ACxThelo/20171208-f007',
+                         # 'ACx_data_3/ACxCalyx/20200718-xxx999-002-001',
+                         # 'ACx_data_3/ACxThelo/20180220f007',
+                         # 'ACx_data_3/ACxThelo/20180310f003',
+                         # 'ACx_data_3/ACxThelo/20200213-xxx999-005']
 
     right_neuron_depths = {
             '20200116-xxx999-005': 322,
@@ -373,18 +437,23 @@ if (__name__ == "__main__"):
     for key in left_neuron_depths.keys():
         depths['ACxCalyx/'+key] = left_neuron_depths[key]
 
-    data_pd = data_pd.drop(rows_to_be_dropped, axis=0)
+    # data_pd = data_pd.drop(rows_to_be_dropped, axis=0)
+    # data_pd = data_pd.drop('autocorr', 1)
     print("data shape --- ", data_pd.shape)
     # print(list(data_pd.columns.values))
     # ['dtbin', 'set', 'hemisphere', 'n_spikes', 'n_trials', 'mean_spikes', 'sd_spikes',
     # 'Abin_est', 'tau_est', 'mse_lsq', 'logtau_est', 'autocorr', 'mse_mean', 'r2',
     # 'bias_logtau', 'var_logtau', 'logtau_corrected', 'tau_corrected', 'duration', 'firing_rate']
 
-    print("---- checking tau consistency ----")
+    print("----- printing out xlsx filfe from pandas db -----")
+    output_file = "../../outputs/tau_analysis_raw_data.xlsx"
+    save_xlsx(data_pd, output_file)
+
+    # print("---- checking tau consistency ----")
     check_tau_consistency(data_pd)
 
-    print("---- FR anf Tau correlation ----")
-    check_fr_tau_corr(data_pd)
+    # print("---- FR anf Tau correlation ----")
+    # check_fr_tau_corr(data_pd)
 
-    print(" ------- plotting depth vs tau -------- ")
-    tau_vs_depth(data_pd, depths)
+    # print(" ------- plotting depth vs tau -------- ")
+    # tau_vs_depth(data_pd, depths)

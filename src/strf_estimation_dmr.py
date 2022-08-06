@@ -10,16 +10,18 @@ import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 from pytorch_minimize.optim import MinimizeWrapper
 
-from dataloader import load_data, get_eventraster, get_stimulifreq_barebone
-from dataloader_strf import loaddata_withraster_strf
-from dataloader_dmr import loaddata_withraster_dmr
+# from src.dataloader_base import load_data, get_eventraster, get_stimulifreq_barebone
+# from src.dataloaders.dataloader_strf import loaddata_withraster_strf
+# from src.dataloaders.dataloader_dmr import loaddata_withraster_dmr
 
 # importing config
 from src.default_cfg import get_cfg_defaults
 
-from src.utils import raster_fulltoevents, exponentialClass, spectral_resample, numpify
-from src.plotting import plot_autocor, plot_neuronsummary, plot_utauests, plot_histdata,\
-    plot_rasterpsth, plot_spectrogram, plot_strf
+from src.utils import raster_full_to_events, exponentialClass, spectral_resample, numpify
+# from src.plotting import plot_autocor, plot_summary_single_neuron, plot_utauests, plot_histdata,\
+    # plot_rasterpsth, plot_spectrogram, plot_strf
+from src.plotting import plot_strf
+from src.data_gen.data_gen_dmr import Gen_Data_DynamicMovingRipple
 
 class strfdataset(Dataset):
     def __init__(self, params, stimuli_df, spikes_df):
@@ -83,8 +85,8 @@ class STRF_Estimation_GLM():
     def __init__(self, params):
         self.params = params
         self.device = params['device']
-        self.frequency_bins =\
-            int((params['freqrange'][1]-params['freqrange'][0])/params['freqbinsize'])
+        self.frequency_bins = params['num_freqs']
+            # int((params['freqrange'][1]-params['freqrange'][0])/params['freqbinsize'])
         self.time_bins =\
             int((params['strf_timerange'][1]-params['strf_timerange'][0])/params['strf_timebinsize'])
         self.strf_params = torch.tensor(np.random.normal(size=(self.frequency_bins,
@@ -93,7 +95,7 @@ class STRF_Estimation_GLM():
         self.history_filter = torch.tensor(np.random.normal(size=(1, self.hist_bins)),
                 requires_grad=True, device=self.device, dtype=torch.float32)
         val = np.random.uniform(-5.0, -1.0, 1) 
-        self.bias = torch.tensor(val, requires_grad=True, device=self.device, dtype=torch.float)
+        self.bias = torch.tensor(val, requires_grad=True, device=self.device, dtype=torch.float32)
         # self.optimizer = torch.optim.LBFGS([self.strf_params, self.history_filter, self.bias], lr=params['lr'])
         # minimizer_args = dict(method='Newton-CG', options={'disp':True, 'maxiter':10})
         minimizer_args = dict(method='TNC', options={'disp':False, 'maxiter':10})
@@ -190,6 +192,15 @@ def estimate_strf(foldername, dataset_type, params,  figloc, saveloc):
     strfest.plotstrf(figloc)
     strfest.save_weights(saveloc)
 
+def estimate_strf_synthetic_dmr(params, figloc, saveloc):
+    gen_dmr = Gen_Data_DynamicMovingRipple()
+    strf_dataloader = DataLoader(gen_dmr, batch_size=params['batchsize'], shuffle=False,
+            num_workers=4)
+    strfest = STRF_Estimation_GLM(params)
+    strfest.run(strf_dataloader)
+    strfest.plotstrf(figloc)
+    strfest.save_weights(saveloc)
+
 
 if(__name__=="__main__"):
     # torch params
@@ -205,9 +216,39 @@ if(__name__=="__main__"):
     params = {}
     params['device'] = device
 
+    params['binsize'] = 0.02#s = 20ms
+    params['delayrange'] = [1, 30]#units
+    params['samplerate'] = 10000#samples per second
+    params['sampletimespan'] = [100, 300]
+    params['minduration'] = 1.640
+    params['rng'] = [0, 1.640]
+
+    params['strf_timebinsize'] = 0.001 #s = 1ms
+    params['strf_timerange'] = [0, 0.1] #s = 0 to 100ms
+    params['freqrange'] = [200, 48000] #hz
+    params['num_freq_carriers_peroct'] = 10
+    params['num_freqs'] = int(np.ceil(params['num_freq_carriers_peroct']*np.log2(\
+            params['freqrange'][1]/params['freqrange'][0])))
+    # params['freqbinsize'] = 100 #hz/bin -- heuristic/random?
+
+    params['hist_size'] = 0.02 #s -- ms
+    params['max_amp'] = 100 #dB
+
+    params['lr'] = 0.001
+    params['batchsize'] = 32
+    params['epochs'] = 1
+    params['output_every'] = 50 # batches
+
+    params['history_reg'] = 0.001
+    params['strf_reg'] = 0.001
+
     # configurations values
     cfg = get_cfg_defaults()
     cfg.freeze()
+
+    figloc = '../outputs/strf_syntheic_dmr.pdf'
+    saveloc = '../checkpoints/strf_synthetic_dmr.h5'
+    estimate_strf_synthetic_dmr(params, figloc, saveloc)
 
     # #strf dataset
     # foldername = "../data/strf_data/"
@@ -215,9 +256,9 @@ if(__name__=="__main__"):
     # dataset_type = 'strf'
 
     #dmr dataset
-    foldername = "../data/dmr_data/"
-    cortexside = ["Calyx", "Thelo"]
-    dataset_type = 'dmr'
+    # foldername = "../data/dmr_data/"
+    # cortexside = ["Calyx", "Thelo"]
+    # dataset_type = 'dmr'
 
 
     ## single datafile test
@@ -232,36 +273,36 @@ if(__name__=="__main__"):
     # plot_neuronsummary(autocor, delay, raster, isi_list, psth_measure, ogest, dichgaussest,\
             # foldername, figloc)
 
-    labels = []
+    # labels = []
 
-    foldernames = []
-    cortexsides = []
-    filenames = []
-    if(dataset_type=='prestrf'):
-        for dfs in datafiles:
-            for ctxs in cortexside:
-                fname = foldername.format(dfs, ctxs)
-                foldersinfname = os.listdir(fname)
-                for f in foldersinfname:
-                    foldernames.append(fname+f+'/')
-                    cortexsides.append(ctxs)
-                    filenames.append(f)
-    else:
-        foldersinfname = os.listdir(foldername)
-        for f in foldersinfname:
-            foldernames.append(foldername+f+'/')
-            cortexsides.append('NA')
-            filenames.append(f)
+    # foldernames = []
+    # cortexsides = []
+    # filenames = []
+    # if(dataset_type=='prestrf'):
+        # for dfs in datafiles:
+            # for ctxs in cortexside:
+                # fname = foldername.format(dfs, ctxs)
+                # foldersinfname = os.listdir(fname)
+                # for f in foldersinfname:
+                    # foldernames.append(fname+f+'/')
+                    # cortexsides.append(ctxs)
+                    # filenames.append(f)
+    # else:
+        # foldersinfname = os.listdir(foldername)
+        # for f in foldersinfname:
+            # foldernames.append(foldername+f+'/')
+            # cortexsides.append('NA')
+            # filenames.append(f)
 
-    datafiles = {'folderloc':foldernames, 'label':cortexsides, 'filenames':filenames}
-    # print(datafiles)
+    # datafiles = {'folderloc':foldernames, 'label':cortexsides, 'filenames':filenames}
+    # # print(datafiles)
 
-    for count, dfs in enumerate(datafiles['folderloc']):
-        figloc = "../outputs/strf_{}.pdf".format(datafiles['filenames'][count])
-        saveloc = "../checkpoints/weights_{}.h5".format(datafiles['filenames'][count])
-        print("dfs", dfs)
-        labels.append(datafiles['label'][count])
-        # figtitle = foldername
-        estimate_strf(dfs, dataset_type, params, figloc, saveloc)
-        print("label: ", datafiles['label'][count])
+    # for count, dfs in enumerate(datafiles['folderloc']):
+        # figloc = "../outputs/strf_{}.pdf".format(datafiles['filenames'][count])
+        # saveloc = "../checkpoints/weights_{}.h5".format(datafiles['filenames'][count])
+        # print("dfs", dfs)
+        # labels.append(datafiles['label'][count])
+        # # figtitle = foldername
+        # estimate_strf(dfs, dataset_type, params, figloc, saveloc)
+        # print("label: ", datafiles['label'][count])
     

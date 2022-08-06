@@ -135,7 +135,7 @@ class Gen_Data_RandomPureTone(Dataset):
         # print(Yhist.shape)
         return X, Yhist, torch.tensor([0.0]), self.Y[0, idx+self.num_timebins] 
 
-    def __save_dataset(self, datafile):
+    # def __save_dataset(self, datafile):
 
-    def __load_dataset(self, datafile):
+    # def __load_dataset(self, datafile):
 

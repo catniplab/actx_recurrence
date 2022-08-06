@@ -3,6 +3,7 @@ from scipy.stats import norm, multivariate_normal as mnorm
 from scipy.special import erfinv, erf
 import scipy.optimize
 import scipy.linalg
+import matplotlib.pyplot as plt
 # from IPython.display import clear_output
 
 import warnings
@@ -12,20 +13,6 @@ class WarningDGOpt(UserWarning):
     pass
 
 
-def find_gauss_covar(data_means, gauss_means, data_covar, tol=1e-10):
-    res = scipy.optimize.minimize(
-                fun = function,
-                # jac = exc_int.jac_least_squares,
-                x0 = (0.1),
-                # x0 = theta0,
-                args = (data_means, gauss_means, data_covar),
-                method = 'L-BFGS-B',
-                tol=tol,
-                bounds=[(-0.9999, 0.9999)],
-                # options=dict(ftol=1e-30, gtol=1e-20, maxiter=100)
-                options=dict(ftol=1e-30, maxiter=50)
-            )
-    return res['x']
 
 def get_bivargauss_cdf(vals, corr_coef):
     """
@@ -70,6 +57,36 @@ def function(data_means, gauss_means, data_covar, gauss_covar):
     # print("cdf calculations: ", bivar_gauss_cdf,  data_covar)
     # return data_covar - bivar_gauss_cdf 
 
+# def function(gauss_covar, data_means, gauss_means, data_covar):
+def gauss_cov_func(data_means, gauss_means, data_covar, gauss_covar):
+    """
+    Computes the pairwise covariance eqn for root finding algorithm.
+
+    Inputs:
+        :param data_means: mean of binary spike train of 2 neurons (ri, rj).
+        :param gauss_means: mean of bivariate Gaussian that calculated from data for the 2 neurons (μi, μj).
+        :param data_covar: covariance between the spike trains of the 2 neurons (Σij).
+        :param gauss_covar: covariance of the bivariate Gaussian distribution corresponding to the 2 neurons (Λij).
+
+    Returns:
+        :return: Φ2([μi, μi], Λij) - ri*rj - Σij
+    """
+    gauss_cov = np.eye(2)
+    gauss_cov[1, 0], gauss_cov[0, 1] = gauss_covar, gauss_covar
+    cdf = mnorm.cdf(gauss_means, mean=[0., 0.], cov=gauss_cov)
+    # cdf = mnorm.cdf([0., 0.], mean=gauss_means, cov=gauss_cov)
+    # print("cdf val: ", cdf, corr_coef)
+
+    bivar_gauss_cdf = np.mean(cdf)
+
+    # print("cdf calculations: ", bivar_gauss_cdf, np.prod(data_means), data_covar)
+    return bivar_gauss_cdf - np.prod(data_means) - data_covar
+
+    # bivar_gauss_cdf = np.mean(get_bivargauss_cdf(vals=np.array(data_means).T,
+                                                 # corr_coef=gauss_covar))
+    # print("cdf calculations: ", bivar_gauss_cdf,  data_covar)
+    # return data_covar - bivar_gauss_cdf 
+
 def find_root_bisection(*eqn_input, eqn=function, maxiters=1000, tol=1e-10):
     """
     Finds root of input equation using the bisection algorithm.
@@ -83,8 +100,8 @@ def find_root_bisection(*eqn_input, eqn=function, maxiters=1000, tol=1e-10):
     Returns:
         :return: root of \'eqn\'.
     """
-    λ0 = -.99999
-    λ1 = .99999
+    λ0 = -.999999999
+    λ1 = .999999999
 
     f0 = eqn(*eqn_input, λ0)
     f1 = eqn(*eqn_input, λ1)
@@ -103,6 +120,7 @@ def find_root_bisection(*eqn_input, eqn=function, maxiters=1000, tol=1e-10):
         warnings.warn('Warning: Both initial covariance values lie on same side of zero crossing. '
                       'Setting value to 0.',
                       WarningDGOpt)
+        # print('f0, f1', f0, f1)
         λ = 0.
         return λ
 
@@ -122,6 +140,102 @@ def find_root_bisection(*eqn_input, eqn=function, maxiters=1000, tol=1e-10):
     # clear_output(wait=True)
     return λ
 
+def plot_func_outputs(eqn=function):
+    plot_path = "../dichgauss_func_trace.pdf"
+    mfr = 0.5
+    dg_mfr = norm.ppf(mfr)
+    dg_cov_0 = -0.9999
+    dg_cov_1 = 0.9999
+
+    cov_range = np.arange(-0.9999, 0.9999, 0.01)
+    
+    cov_0_arr = []
+    cov_1_arr = []
+    for i in range(cov_range.shape[0]):
+        cov_0_arr.append(eqn([mfr]*2, [dg_mfr]*2, cov_range[i], dg_cov_0))
+        cov_1_arr.append(eqn([mfr]*2, [dg_mfr]*2, cov_range[i], dg_cov_1))
+
+    fig, ax = plt.subplots()
+    ax.plot(cov_range, cov_0_arr, 'r', label='-0.99999')
+    ax.plot(cov_range, cov_1_arr, 'b', label='0.99999')
+    ax.plot(cov_range, np.array(cov_0_arr)*np.array(cov_1_arr), 'g', label='product')
+    ax.set_xlabel('range of cov values')
+    ax.set_ylabel('range of function values')
+    ax.legend(fancybox=True)
+    # plt.show()
+    plt.savefig(plot_path)
+
+
+def plot_dg_outputs(eqn=function):
+    plot_path = "../phi2_func_trace.pdf"
+    mfr = [0.75, 0.5, 0.25, 0.1, 0.01, 0.001]
+    colors = ['r', 'b', 'g', 'c', 'm', 'y']
+    # dg_mfr = norm.ppf(mfr)
+    # cov = 0.2
+    pedastal = 1e-5
+    tau = 0.1
+    binsize = 0.02 #s
+    time_i = 1
+    autocov0 = (np.array(mfr)-pedastal)*np.exp(-1*(time_i*binsize)/tau) + pedastal
+    # dg_cov_0 = -0.9999
+    # dg_cov_1 = 0.9999
+
+    dg_cov_range = np.linspace(-0.999999, 0.999999, 1000)
+    dg_cov_range[-1] = 0.999999999
+    dg_cov_range[0] = -0.999999999
+    
+    phi2s_arr = []
+    f_0s_arr = []
+    dg_mfrs=[]
+    for j in range(len(mfr)):
+        dg_mfr = norm.ppf(mfr[j])
+        dg_mfrs.append(dg_mfr)
+        phi2_arr = []
+        f_0_arr = []
+        for i in range(dg_cov_range.shape[0]):
+            # f_0_arr.append(eqn([mfr[j]]*2, [dg_mfr]*2, cov, dg_cov_range[i])-mfr[j])
+            phi2_arr.append(get_bivargauss_cdf([dg_mfr]*2, dg_cov_range[i]))
+            # f_0_arr.append(get_bivargauss_cdf([dg_mfr]*2, dg_cov_range[i])-mfr[j]**2)
+            f_0_arr.append(get_bivargauss_cdf([dg_mfr]*2, dg_cov_range[i])-mfr[j]**2-autocov0[j])
+        phi2s_arr.append(phi2_arr)
+        f_0s_arr.append(f_0_arr)
+
+    # print(f_0s_arr[0])
+
+    fig, ax = plt.subplots()
+    for i in range(len(mfr)):
+        ax.plot(dg_cov_range, phi2s_arr[i], color=colors[i],\
+                label='\Phi2 for mfr={}, dg_mean={:.3e}'.format(mfr[i],dg_mfrs[i]))
+        ax.plot(dg_cov_range, f_0s_arr[i], color=colors[i],\
+                label='\Si2-\lam for mfr={}, lam={:.3e}'.format(mfr[i], autocov0[i]), linestyle='--')
+    # ax.plot(dg_cov_range, f_0_arr, 'r', label='\Si - cov evaluation')
+        # f_1_arr = []
+    # ax.plot(cov_range, np.array(cov_0_arr)*np.array(cov_1_arr), 'g', label='product')
+    ax.set_xlabel('range of covar values')
+    ax.set_ylabel('range of bivar cdf values')
+    ax.legend(fancybox=True, fontsize='x-small')
+    plt.show()
+    # plt.title('covariance checked for: {}'.format(autocov0))
+    # plt.savefig(plot_path)
+
+def test_dich_gauss():
+    lam1 = 0.5
+    lam2 = 0.5
+
+    cov = 0.125
+    # cov = cov/2
+
+    gamma1 = norm.ppf(lam1)
+    gamma2 = norm.ppf(lam2)
+
+    cov_dg = find_root_bisection([lam1, lam2], [gamma1, gamma2], cov, eqn=gauss_cov_func)
+    # cov_dg = find_gauss_covar([lam1, lam2], [gamma1, gamma2], cov)
+
+    print(f'gamma1: {gamma1}, gamma2: {gamma2}, cov_dg: {cov_dg}')
+
+    # test_output = function([lam1, lam2], [gamma1, gamma2], 0.0, 0.39)
+    test_output = gauss_cov_func([lam1, lam2], [gamma1, gamma2], 0.0, 0.707)
+    print(test_output)
 
 class DGOptimise(object):
     """
@@ -216,3 +330,8 @@ class DGOptimise(object):
         if np.any(mean < 0) or np.any(mean > 1):
             print('Mean should have value between 0 and 1.')
             raise NotImplementedError
+
+if __name__ == "__main__":
+    # test_dich_gauss()
+    # plot_func_outputs()
+    plot_dg_outputs()

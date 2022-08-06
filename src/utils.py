@@ -7,8 +7,7 @@ from scipy.signal import fftconvolve
 import itertools
 
 from src.dich_gauss.dichot_gauss import DichotGauss 
-from src.dich_gauss.optim_dichot_gauss import get_bivargauss_cdf, find_root_bisection,\
-            find_gauss_covar
+from src.dich_gauss.optim_dichot_gauss import get_bivargauss_cdf, find_root_bisection
 import matplotlib.pyplot as plt
 
 def check_and_create_dirs(path):
@@ -53,9 +52,9 @@ def calculate_meanfiringrate_test(raster, sampletime):
     mfs = mfs_mean/(sampletime[1]-sampletime[0])
     return mfs 
 
-def calculate_meanfiringrate_test2(raster, raster_full, sampletime):
+def calculate_meanfiringrate_test2(raster_full, sampletime):
     mfs_s = []
-    for i in range(len(raster)):
+    for i in range(raster_full.shape[0]):
        mfs_s.append(np.sum(np.where(raster_full[i]>0, raster_full[i], 0)))#spike firing count across trials
     mfs_mean = np.mean(mfs_s) #mean across trials on number of spikes
     mfs = mfs_mean/(sampletime[1]-sampletime[0])
@@ -280,7 +279,7 @@ class dichotomizedgaussian_surrogate():
         # delay = np.linspace(delayrange[0], delayrange[1], 20)
         # delay = [i for i in range(delayrange[0], delayrange[1])]#range of delays
         # mfr = calculate_meanfiringrate(raster, sampletimespan)#mean firing rate
-        mfr = calculate_meanfiringrate_test2(raster, self.gen_data, sampletimespan)
+        mfr = calculate_meanfiringrate_test2(self.gen_data, sampletimespan)
         # autocor = self.dich_autocorrelation(self.gen_data, delay)#autocorr calculation
         autocor = autocorrelation(self.gen_data, delay)#autocorr calculation
         # print("autocorrelation in dich gauss: ", autocor)
